@@ -144,9 +144,8 @@ jobs:
           path: ./
 
       - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+        shell: pwsh
+        run: python --version
 
       - name: Setup NuGet
         uses: NuGet/setup-nuget@v2
