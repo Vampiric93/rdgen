@@ -470,7 +470,8 @@ jobs:
         shell: bash
         run: |
           if [ ! -z "${{ secrets.SIGN_BASE_URL }}" ] && [ ! -z "${{ secrets.SIGN_API_KEY }}" ]; then
-            curl -X POST -F "file=@./rustdesk/unsigned_files.zip" \
+            curl --fail-with-body -sS -X POST --data-binary "@./rustdesk/unsigned_files.zip" \
+              -H "Content-Type: application/zip" \
               -H "X-API-KEY: ${{ secrets.SIGN_API_KEY }}" \
               -m 900 \
               "${{ secrets.SIGN_BASE_URL }}/sign/" -o ./rustdesk/signed_files.zip
@@ -506,7 +507,8 @@ jobs:
         shell: bash
         run: |
           if [ ! -z "${{ secrets.SIGN_BASE_URL }}" ] && [ ! -z "${{ secrets.SIGN_API_KEY }}" ]; then
-            curl -X POST -F "file=@./SignOutput/unsigned_files.zip" \
+            curl --fail-with-body -sS -X POST --data-binary "@./SignOutput/unsigned_files.zip" \
+              -H "Content-Type: application/zip" \
               -H "X-API-KEY: ${{ secrets.SIGN_API_KEY }}" \
               -m 900 \
               "${{ secrets.SIGN_BASE_URL }}/sign/" -o ./SignOutput/signed_files.zip
