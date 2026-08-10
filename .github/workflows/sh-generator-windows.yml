@@ -358,9 +358,18 @@ jobs:
           )
           $content = $content.Replace(
             '["User32", "bcrypt", "ole32", "advapi32"].to_vec()',
-            '["User32", "bcrypt", "ole32", "advapi32", "mfuuid", "strmiids"].to_vec()'
+            '["User32", "bcrypt", "ole32", "advapi32", "mfuuid"].to_vec()'
+          )
+          $content = $content.Replace(
+            'builder.include(&common_dir);',
+            'builder.include(&common_dir); builder.file(common_dir.join("codecapi_iid.c"));'
           )
           Set-Content $buildScript.FullName $content
+          @'
+          #define INITGUID
+          #include <guiddef.h>
+          DEFINE_GUID(IID_ICodecAPI, 0x901db4c7, 0x31ce, 0x41a2, 0x85, 0xdc, 0x8f, 0xa0, 0xbf, 0x41, 0xb8, 0xda);
+          '@ | Set-Content (Join-Path $buildScript.DirectoryName 'cpp\common\codecapi_iid.c')
 
       - name: Build rustdesk
         run: |
