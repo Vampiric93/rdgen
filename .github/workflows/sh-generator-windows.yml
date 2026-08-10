@@ -344,9 +344,25 @@ jobs:
           flutter pub run flutter_launcher_icons
           cd ..
 
+      - name: Patch hwcodec Windows link libraries
+        shell: pwsh
+        run: |
+          cargo fetch --locked
+          $buildScript = Get-ChildItem "$env:CARGO_HOME\git\checkouts\hwcodec-*\*\build.rs" |
+            Select-Object -First 1
+          if (-not $buildScript) { throw "hwcodec build.rs not found" }
+          $content = Get-Content $buildScript.FullName -Raw
+          $content = $content.Replace(
+            'vec!["avcodec", "avutil", "avformat"]',
+            'vec!["avcodec", "avutil", "avformat", "swresample"]'
+          )
+          $content = $content.Replace(
+            '["User32", "bcrypt", "ole32", "advapi32"].to_vec()',
+            '["User32", "bcrypt", "ole32", "advapi32", "mfuuid", "strmiids"].to_vec()'
+          )
+          Set-Content $buildScript.FullName $content
+
       - name: Build rustdesk
-        env:
-          RUSTFLAGS: "-C link-arg=C:\\vcpkg\\installed\\x64-windows-static\\lib\\swresample.lib -C link-arg=mfuuid.lib -C link-arg=strmiids.lib"
         run: |
           # Windows: build RustDesk
           python .\build.py --portable --hwcodec --flutter --vram --skip-portable-pack
