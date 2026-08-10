@@ -375,6 +375,9 @@ jobs:
 
       - name: Build rustdesk
         run: |
+          $env:PATH = 'C:\Program Files\Git\cmd;C:\Program Files\Git\bin;' + $env:PATH
+          git --version
+
           # Windows: build RustDesk
           python .\build.py --portable --hwcodec --flutter --vram --skip-portable-pack
           mv ./flutter/build/windows/x64/runner/Release ./rustdesk
