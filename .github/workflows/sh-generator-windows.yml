@@ -375,11 +375,9 @@ jobs:
 
       - name: Build rustdesk
         run: |
-          $env:PATH = 'C:\Program Files\Git\cmd;C:\Program Files\Git\bin;' + $env:PATH
-          git --version
-
           # Windows: build RustDesk
-          python .\build.py --portable --hwcodec --flutter --vram --skip-portable-pack
+          cmd.exe /d /c 'set "PATH=C:\Program Files\Git\cmd;C:\Program Files\Git\bin;%PATH%" && git --version && python .\build.py --portable --hwcodec --flutter --vram --skip-portable-pack'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           mv ./flutter/build/windows/x64/runner/Release ./rustdesk
  
           # Download usbmmidd_v2.zip and extract it to ./rustdesk
