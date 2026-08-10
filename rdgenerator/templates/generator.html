@@ -559,7 +559,14 @@
             const formDataObj = new FormData(form);  // Create a FormData object
 
             formDataObj.forEach((value, key) => {
-                formData[key] = value; // Add each key/value pair to the formData object.
+                if (key === 'direction') {
+                    if (!Array.isArray(formData[key])) {
+                        formData[key] = [];
+                    }
+                    formData[key].push(value);
+                } else {
+                    formData[key] = value;
+                }
             });
 
             // 2. Handle select elements separately (more reliable):
@@ -571,6 +578,10 @@
             // 3. Handle checkboxes and radio buttons (important!):
             const checkboxRadioElements = form.querySelectorAll('input[type="checkbox"], input[type="radio"]');
             checkboxRadioElements.forEach(input => {
+                // Connection type is a checkbox group and was already collected above.
+                if (input.name === 'direction') {
+                    return;
+                }
                 if (input.name) { //only add to form data if it has a name
                     if (input.checked) {
                         formData[input.name] = input.value;
@@ -658,7 +669,9 @@
                                                 element.checked = false; // Uncheck others in the group
                                             }
                                         } else if (element.type === 'checkbox') {
-                                            element.checked = formData[key];
+                                            element.checked = Array.isArray(formData[key])
+                                                ? formData[key].includes(element.value)
+                                                : Boolean(formData[key]);
                                         } else if (element.type !== 'file') {
                                             element.value = formData[key];
                                         }

@@ -56,7 +56,6 @@ def validate_generate_params(data):
     choice_validations = {
         'platform': (PLATFORM_CHOICES, 'windows'),
         'version': (VERSION_CHOICES, '1.4.9'),
-        'direction': (DIRECTION_CHOICES, 'both'),
         'installation': (INSTALLATION_CHOICES, 'installationY'),
         'settings': (SETTINGS_CHOICES, 'settingsY'),
         'theme': (THEME_CHOICES, 'system'),
@@ -71,6 +70,16 @@ def validate_generate_params(data):
             errors[field] = f'Invalid choice. Must be one of: {choices}'
         else:
             cleaned[field] = value
+
+    directions = data.get('direction', ['both'])
+    if isinstance(directions, str):
+        directions = [directions]
+    if not isinstance(directions, list) or not directions:
+        errors['direction'] = 'Select at least one connection type.'
+    elif any(direction not in DIRECTION_CHOICES for direction in directions):
+        errors['direction'] = f'Invalid choice. Must contain only: {DIRECTION_CHOICES}'
+    else:
+        cleaned['direction'] = list(dict.fromkeys(directions))
 
     # Boolean fields
     for field in BOOL_FIELDS:

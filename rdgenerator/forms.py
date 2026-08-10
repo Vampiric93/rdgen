@@ -12,11 +12,11 @@ class GenerateForm(forms.Form):
     #General
     exename = forms.CharField(label="Name for EXE file", required=True)
     appname = forms.CharField(label="Custom App Name", required=False)
-    direction = forms.ChoiceField(widget=forms.RadioSelect, choices=[
-        ('incoming', 'Incoming Only'),
-        ('outgoing', 'Outgoing Only'),
-        ('both', 'Bidirectional')
-    ], initial='both')
+    direction = forms.MultipleChoiceField(widget=forms.CheckboxSelectMultiple, choices=[
+        ('incoming', 'Incoming Quick Client'),
+        ('outgoing', 'Outgoing Quick Client'),
+        ('both', 'Full Bidirectional Client')
+    ], initial=['incoming', 'outgoing', 'both'])
     installation = forms.ChoiceField(label="Disable Installation", choices=[
         ('installationY', 'No, enable installation'),
         ('installationN', 'Yes, DISABLE installation')

@@ -483,43 +483,13 @@ jobs:
           Remove-Item ./rustdesk/unsigned_files.zip
           Remove-Item ./rustdesk/signed_files.zip
 
-      - name: Create custom.txt file
-        shell: bash
-        run: |
-          echo -n "${{ env.custom }}" | cat > ./rustdesk/custom_.txt
-
-      - name: Build self-extracted executable
-        shell: bash
-        if: env.UPLOAD_ARTIFACT == 'true'
-        run: |
-          mv "./rustdesk/rustdesk.exe" "./rustdesk/${{ env.appname }}.exe" || echo "rustdesk.exe"
-          sed -i '/dpiAware/d' res/manifest.xml
-          pushd ./libs/portable
-          pip3 install -r requirements.txt
-          python ./generate.py -f ../../rustdesk/ -o . -e "../../rustdesk/${{ env.appname }}.exe"
-          popd
-          mkdir -p ./SignOutput
-          mv ./target/release/rustdesk-portable-packer.exe "./SignOutput/rustdesk.exe"
-
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2
 
-      - name: Build msi
+      - name: Build selected EXE and MSI variants
         if: env.UPLOAD_ARTIFACT == 'true'
-        run: |
-          $myappname = "${{ env.appname }}" -replace '\s','_'
-          cp "rustdesk/${{ env.appname }}.exe" "rustdesk/${myappname}.exe" -ErrorAction SilentlyContinue
-          pushd ./res/msi
-          python preprocess.py --app-name "$myappname" --arp -d ../../rustdesk
-          nuget restore msi.sln
-          msbuild msi.sln -p:Configuration=Release -p:Platform=x64 /p:TargetVersion=Windows10 /p:SuppressValidation=true
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if (-not (Test-Path ./Package/bin/x64/Release/en-us/Package.msi)) {
-            throw "MSI output was not created"
-          }
-          cp ./Package/bin/x64/Release/en-us/Package.msi ../../SignOutput/rustdesk-latest.msi
-          mv ./Package/bin/x64/Release/en-us/Package.msi ../../SignOutput/rustdesk.msi
-          sha256sum ../../SignOutput/rustdesk.msi
+        shell: pwsh
+        run: ./.github/scripts/build-windows-variants.ps1
 
       - name: zip exe and msi
         continue-on-error: true
@@ -549,14 +519,6 @@ jobs:
           Remove-Item ./SignOutput/unsigned_files.zip
           Remove-Item ./SignOutput/signed_files.zip
 
-      - name: rename rustdesk.exe to filename.exe
-        run: |
-          mv ./SignOutput/rustdesk.exe "./SignOutput/${{ env.filename }}.exe" || echo "rustdesk"
-
-      - name: rename rustdesk.msi to filename.msi
-        run: |
-          Move-Item ./SignOutput/rustdesk.msi "./SignOutput/${{ env.filename }}.msi" -ErrorAction Stop
-
       - name: send file to rdgen server
         if: ${{ env.rdgen == 'true' }}
         uses: nick-fields/retry@v3
@@ -565,8 +527,15 @@ jobs:
           max_attempts: 3
           shell: bash
           command: |
-            curl --fail-with-body -sS -X POST -H "Authorization: Bearer ${{ env.token }}" -F "file=@./SignOutput/${{ env.filename }}.exe" -F "uuid=${{ env.uuid }}" ${{ secrets.GENURL }}/save_custom_client
-            curl --fail-with-body -sS -X POST -H "Authorization: Bearer ${{ env.token }}" -F "file=@./SignOutput/${{ env.filename }}.msi" -F "uuid=${{ env.uuid }}" ${{ secrets.GENURL }}/save_custom_client
+            IFS=',' read -ra selected_directions <<< "${directions:-both}"
+            for direction in "${selected_directions[@]}"; do
+              suffix="$direction"
+              if [ "$direction" = "both" ]; then suffix="full"; fi
+              for extension in exe msi; do
+                artifact="./SignOutput/${filename}-${suffix}.${extension}"
+                curl --fail-with-body -sS -X POST -H "Authorization: Bearer ${token}" -F "file=@${artifact}" -F "uuid=${uuid}" "${{ secrets.GENURL }}/save_custom_client"
+              done
+            done
 
       - name: send file to api server
         if: ${{ env.rdgen == 'false' }}
@@ -576,8 +545,15 @@ jobs:
           max_attempts: 3
           shell: bash
           command: |
-            curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./SignOutput/${{ env.filename }}.exe" ${{ env.apiServer }}/api/save_custom_client
-            curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./SignOutput/${{ env.filename }}.msi" ${{ env.apiServer }}/api/save_custom_client || true
+            IFS=',' read -ra selected_directions <<< "${directions:-both}"
+            for direction in "${selected_directions[@]}"; do
+              suffix="$direction"
+              if [ "$direction" = "both" ]; then suffix="full"; fi
+              for extension in exe msi; do
+                artifact="./SignOutput/${filename}-${suffix}.${extension}"
+                curl --fail-with-body -sS -X POST -H "Authorization: Bearer ${token}" -F "file=@${artifact}" "${apiServer}/api/save_custom_client"
+              done
+            done
 
   cleanup:
     needs: [build-for-windows-flutter]

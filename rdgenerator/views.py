@@ -1,4 +1,5 @@
 import io
+import copy
 from pathlib import Path
 from django.http import HttpResponse, JsonResponse, HttpResponseForbidden
 from django.shortcuts import render, get_object_or_404
@@ -54,7 +55,12 @@ def generate_custom_client(params, full_url):
         urlLink = "https://rustdesk.com"
     if not downloadLink:
         downloadLink = "https://rustdesk.com/download"
-    direction = params.get('direction', 'both')
+    directions = params.get('direction', ['both'])
+    if isinstance(directions, str):
+        directions = [directions]
+    directions = [direction for direction in ('incoming', 'outgoing', 'both') if direction in directions]
+    if not directions:
+        directions = ['both']
     installation = params.get('installation', 'installationY')
     settings = params.get('settings', 'settingsY')
     appname = params.get('appname', '')
@@ -135,8 +141,6 @@ def generate_custom_client(params, full_url):
 
     ###create the custom.txt json here and send in as inputs below
     decodedCustom = {}
-    if direction != "Both":
-        decodedCustom['conn-type'] = direction
     if installation == "installationN":
         decodedCustom['disable-installation'] = 'Y'
     if settings == "settingsN":
@@ -212,11 +216,13 @@ def generate_custom_client(params, full_url):
                 k, value = line.split('=', 1)
                 decodedCustom['override-settings'][k.strip()] = value.strip()
     
-    decodedCustomJson = json.dumps(decodedCustom)
-
-    string_bytes = decodedCustomJson.encode("ascii")
-    base64_bytes = base64.b64encode(string_bytes)
-    encodedCustom = base64_bytes.decode("ascii")
+    encoded_customs = {}
+    for direction in directions:
+        variant_custom = copy.deepcopy(decodedCustom)
+        variant_custom['conn-type'] = direction
+        decoded_custom_json = json.dumps(variant_custom)
+        encoded_customs[direction] = base64.b64encode(decoded_custom_json.encode("ascii")).decode("ascii")
+    encodedCustom = encoded_customs[directions[0]]
 
     ####from here run the github action, we need user, repo, access token.
     if platform == 'windows':
@@ -241,6 +247,10 @@ def generate_custom_client(params, full_url):
         "key":key,
         "apiServer":apiServer,
         "custom":encodedCustom,
+        "custom_incoming":encoded_customs.get('incoming', ''),
+        "custom_outgoing":encoded_customs.get('outgoing', ''),
+        "custom_both":encoded_customs.get('both', ''),
+        "directions":','.join(directions),
         "uuid":myuuid,
         "iconlink_url":iconlink_url,
         "iconlink_uuid":iconlink_uuid,
@@ -414,10 +424,20 @@ def check_for_file(request):
     github_log_url = result['github_log_url']
 
     if gh_run.status == "success":
+        result_dir = Path('exe') / uuid
+        available_files = []
+        if result_dir.is_dir():
+            available_files = sorted(
+                path.name for path in result_dir.iterdir()
+                if path.is_file()
+                and path.name.startswith(f'{filename}-')
+                and path.suffix.lower() in ('.exe', '.msi')
+            )
         return render(request, 'generated.html', {
             'filename': filename, 
             'uuid': uuid, 
-            'platform': platform
+            'platform': platform,
+            'available_files': available_files
         })
         
     elif gh_run.status in ['failure', 'cancelled', 'timed_out', 'skipped', 'action_required']:

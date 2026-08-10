@@ -127,8 +127,11 @@
         <h2 class="success-text">Build Generated Successfully</h2>
         <div class="download-section">
             {% if platform == 'windows' %}
-                <a href='/download?filename={{filename}}.exe&uuid={{uuid}}' class="download-link">Download {{filename}}.exe</a>
-                <a href='/download?filename={{filename}}.msi&uuid={{uuid}}' class="download-link">Download {{filename}}.msi</a>
+                {% for output_file in available_files %}
+                    <a href='/download?filename={{output_file}}&uuid={{uuid}}' class="download-link">Download {{output_file}}</a>
+                {% empty %}
+                    <p>Error: No Windows files generated</p>
+                {% endfor %}
             {% elif platform == 'windows-x86' %}
                 <a href='/download?filename={{filename}}.exe&uuid={{uuid}}' class="download-link">Download {{filename}}.exe</a>
             {% elif platform == 'linux' %}
