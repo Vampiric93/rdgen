@@ -346,7 +346,7 @@ jobs:
 
       - name: Build rustdesk
         env:
-          RUSTFLAGS: "-C link-arg=swresample.lib -C link-arg=mfuuid.lib -C link-arg=strmiids.lib"
+          RUSTFLAGS: "-C link-arg=C:\\vcpkg\\installed\\x64-windows-static\\lib\\swresample.lib -C link-arg=mfuuid.lib -C link-arg=strmiids.lib"
         run: |
           # Windows: build RustDesk
           python .\build.py --portable --hwcodec --flutter --vram --skip-portable-pack
