@@ -85,6 +85,10 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+
+      - name: Preserve Windows variant packaging script
+        shell: pwsh
+        run: Copy-Item ./.github/scripts/build-windows-variants.ps1 "$env:RUNNER_TEMP/build-windows-variants.ps1" -Force
         
       - uses: actions/download-artifact@v4
         with:
@@ -489,7 +493,7 @@ jobs:
       - name: Build selected EXE and MSI variants
         if: env.UPLOAD_ARTIFACT == 'true'
         shell: pwsh
-        run: ./.github/scripts/build-windows-variants.ps1
+        run: '& "$env:RUNNER_TEMP/build-windows-variants.ps1"'
 
       - name: zip exe and msi
         continue-on-error: true

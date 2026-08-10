@@ -422,17 +422,17 @@ def check_for_file(request):
 
     gh_run = result['gh_run']
     github_log_url = result['github_log_url']
+    result_dir = Path('exe') / uuid
+    available_files = []
+    if result_dir.is_dir():
+        available_files = sorted(
+            path.name for path in result_dir.iterdir()
+            if path.is_file()
+            and path.name.startswith(f'{filename}-')
+            and path.suffix.lower() in ('.exe', '.msi')
+        )
 
     if gh_run.status == "success":
-        result_dir = Path('exe') / uuid
-        available_files = []
-        if result_dir.is_dir():
-            available_files = sorted(
-                path.name for path in result_dir.iterdir()
-                if path.is_file()
-                and path.name.startswith(f'{filename}-')
-                and path.suffix.lower() in ('.exe', '.msi')
-            )
         return render(request, 'generated.html', {
             'filename': filename, 
             'uuid': uuid, 
@@ -446,7 +446,8 @@ def check_for_file(request):
             'filename': filename, 
             'uuid': uuid, 
             'platform': platform,
-            'status': gh_run.status
+            'status': gh_run.status,
+            'available_files': available_files
         })
         
     else:
@@ -462,6 +463,9 @@ def download(request):
     filename = request.GET['filename']
     uuid = request.GET['uuid']
     file_path = os.path.join('exe', uuid, filename)
+    if not os.path.isfile(file_path):
+        from django.http import Http404
+        raise Http404("Generated file not found")
     with open(file_path, 'rb') as file:
         content = file.read()
     response = HttpResponse(content, headers={
