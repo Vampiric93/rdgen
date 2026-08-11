@@ -99,6 +99,36 @@ jobs:
         with:
           zip_password: ${{ secrets.ZIP_PASSWORD }}
 
+      - name: Load signing bridge configuration
+        shell: pwsh
+        run: |
+          $localKeyPath = 'C:\rdgen-signing\api-key.txt'
+          if (Test-Path -LiteralPath $localKeyPath) {
+            $signBaseUrl = 'http://127.0.0.1:19000'
+            $signApiKey = (Get-Content -LiteralPath $localKeyPath -Raw).Trim()
+          } else {
+            $signBaseUrl = '${{ secrets.SIGN_BASE_URL }}'
+            $signApiKey = '${{ secrets.SIGN_API_KEY }}'
+          }
+
+          if (-not [string]::IsNullOrWhiteSpace($signBaseUrl) -and -not [string]::IsNullOrWhiteSpace($signApiKey)) {
+            Write-Output "::add-mask::$signApiKey"
+            "SIGN_BASE_URL_EFFECTIVE=$($signBaseUrl.TrimEnd('/'))" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+            "SIGN_API_KEY_EFFECTIVE=$signApiKey" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+            'SIGNING_ENABLED=true' | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          } else {
+            'SIGNING_ENABLED=false' | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+
+      - name: Verify signing bridge before build
+        if: env.SIGNING_ENABLED == 'true'
+        shell: pwsh
+        run: |
+          $response = Invoke-WebRequest "$env:SIGN_BASE_URL_EFFECTIVE/health" -UseBasicParsing -TimeoutSec 10
+          if ($response.StatusCode -ne 200 -or $response.Content -ne 'ok') {
+            throw 'RDGen signing bridge health check failed'
+          }
+
       - name: Finalize and Cleanup zip/json
         if: always() # Run even if previous steps fail
         continue-on-error: true
@@ -466,15 +496,14 @@ jobs:
           Compress-Archive -Path ./rustdesk/*.dll, ./rustdesk/*.exe -DestinationPath ./rustdesk/unsigned_files.zip -CompressionLevel Fastest
 
       - name: sign dlls
-        continue-on-error: true
         shell: bash
         run: |
-          if [ ! -z "${{ secrets.SIGN_BASE_URL }}" ] && [ ! -z "${{ secrets.SIGN_API_KEY }}" ]; then
+          if [ "${SIGNING_ENABLED:-false}" = "true" ]; then
             curl --fail-with-body -sS -X POST --data-binary "@./rustdesk/unsigned_files.zip" \
               -H "Content-Type: application/zip" \
-              -H "X-API-KEY: ${{ secrets.SIGN_API_KEY }}" \
+              -H "X-API-KEY: ${SIGN_API_KEY_EFFECTIVE}" \
               -m 900 \
-              "${{ secrets.SIGN_BASE_URL }}/sign/" -o ./rustdesk/signed_files.zip
+              "${SIGN_BASE_URL_EFFECTIVE}/sign/" -o ./rustdesk/signed_files.zip
           else
             echo "Signing skipped - signing URL or API key not configured"
             cp ./rustdesk/unsigned_files.zip ./rustdesk/signed_files.zip
@@ -503,15 +532,14 @@ jobs:
           Compress-Archive -Path ./SignOutput/*.exe, ./SignOutput/*.msi -DestinationPath ./SignOutput/unsigned_files.zip -CompressionLevel Fastest
 
       - name: sign exe and msi
-        continue-on-error: true
         shell: bash
         run: |
-          if [ ! -z "${{ secrets.SIGN_BASE_URL }}" ] && [ ! -z "${{ secrets.SIGN_API_KEY }}" ]; then
+          if [ "${SIGNING_ENABLED:-false}" = "true" ]; then
             curl --fail-with-body -sS -X POST --data-binary "@./SignOutput/unsigned_files.zip" \
               -H "Content-Type: application/zip" \
-              -H "X-API-KEY: ${{ secrets.SIGN_API_KEY }}" \
+              -H "X-API-KEY: ${SIGN_API_KEY_EFFECTIVE}" \
               -m 900 \
-              "${{ secrets.SIGN_BASE_URL }}/sign/" -o ./SignOutput/signed_files.zip
+              "${SIGN_BASE_URL_EFFECTIVE}/sign/" -o ./SignOutput/signed_files.zip
           else
             echo "Signing skipped - signing URL or API key not configured"
             cp ./SignOutput/unsigned_files.zip ./SignOutput/signed_files.zip
