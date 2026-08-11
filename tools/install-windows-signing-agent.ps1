@@ -89,8 +89,15 @@ if (Test-Path -LiteralPath $apiKeyFile -PathType Leaf) {
 }
 
 $target = "$RemoteUser@$RemoteHost"
-& ssh.exe -F NUL -i $sshKeyPath -o BatchMode=yes -o IdentitiesOnly=yes -o IdentityAgent=none -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new $target 'key-test' 2>$null
-$keyInstalled = $LASTEXITCODE -eq 0
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+try {
+    & ssh.exe -F NUL -i $sshKeyPath -o LogLevel=ERROR -o BatchMode=yes -o IdentitiesOnly=yes -o IdentityAgent=none -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new $target 'key-test' 2>$null
+    $keyInstalled = $LASTEXITCODE -eq 0
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
 
 if (-not $keyInstalled) {
     Write-Host ''
@@ -140,15 +147,29 @@ if ($LASTEXITCODE -ne 0) { throw 'Could not secure the signing configuration ACL
         publicKey = (Get-Content -LiteralPath "$sshKeyPath.pub" -Raw).Trim()
         apiKey = $apiKey
     } | ConvertTo-Json -Compress
-    $bootstrapPayload |
-        & ssh.exe -o StrictHostKeyChecking=accept-new $target powershell.exe -NoProfile -EncodedCommand $encodedCommand
-    if ($LASTEXITCODE -ne 0) {
+    $ErrorActionPreference = 'Continue'
+    try {
+        $bootstrapPayload |
+            & ssh.exe -o LogLevel=ERROR -o StrictHostKeyChecking=accept-new $target powershell.exe -NoProfile -EncodedCommand $encodedCommand
+        $bootstrapExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($bootstrapExitCode -ne 0) {
         throw 'Could not bootstrap the signing bridge on the server'
     }
 }
 
-& ssh.exe -F NUL -i $sshKeyPath -o BatchMode=yes -o IdentitiesOnly=yes -o IdentityAgent=none -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new $target 'key-test'
-if ($LASTEXITCODE -ne 0) {
+$ErrorActionPreference = 'Continue'
+try {
+    & ssh.exe -F NUL -i $sshKeyPath -o LogLevel=ERROR -o BatchMode=yes -o IdentitiesOnly=yes -o IdentityAgent=none -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new $target 'key-test' 2>$null
+    $keyTestExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+if ($keyTestExitCode -ne 0) {
     throw 'SSH key authentication test failed'
 }
 
