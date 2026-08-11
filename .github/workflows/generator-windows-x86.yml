@@ -85,9 +85,11 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Preserve Windows x86 variant packaging script
+      - name: Preserve RDGen build scripts
         shell: pwsh
-        run: Copy-Item ./.github/scripts/build-windows-x86-variants.ps1 "$env:RUNNER_TEMP/build-windows-x86-variants.ps1" -Force
+        run: |
+          Copy-Item ./.github/scripts/build-windows-x86-variants.ps1 "$env:RUNNER_TEMP/build-windows-x86-variants.ps1" -Force
+          Copy-Item ./.github/scripts/apply-client-branding.py "$env:RUNNER_TEMP/apply-client-branding.py" -Force
         
       - uses: actions/download-artifact@v4
         with:
@@ -170,6 +172,12 @@ jobs:
           repository: rustdesk/rustdesk
           submodules: recursive
 
+      - name: Apply safe company branding
+        shell: pwsh
+        env:
+          RDGEN_COMPANY_NAME: ${{ env.compname }}
+        run: python "$env:RUNNER_TEMP/apply-client-branding.py" --company "$env:RDGEN_COMPANY_NAME" .
+
       - name: Install ImageMagick on Windows
         run: |
           choco install -y imagemagick.app --no-progress
@@ -220,20 +228,6 @@ jobs:
           sed -i -e 's|reg delete HKEY_CLASSES_ROOT\\\\.{ext} /f|reg delete \\\"HKEY_CLASSES_ROOT\\\\.{ext}\\\" /f|' ./src/platform/windows.rs
           sed -i -e 's|reg delete HKEY_CLASSES_ROOT\\\\{ext} /f|reg delete \\\"HKEY_CLASSES_ROOT\\\\{ext}\\\" /f|' ./src/platform/windows.rs
           
-      - name: change company name
-        if: env.compname != 'Purslane Ltd'
-        continue-on-error: true
-        shell: bash
-        run: |
-          sed -i -e 's|Purslane Tech Pte. Ltd.|${{ env.compname }}|' ./src/ui/index.tis
-          sed -i -e 's|Purslane Tech Pte. Ltd.|${{ env.compname }}|' ./Cargo.toml
-          sed -i -e 's|Purslane Tech Pte. Ltd.|${{ env.compname }}|' ./libs/portable/Cargo.toml
-          sed -i -e 's|Purslane Tech Pte. Ltd.|${{ env.compname }}|' ./src/main.rs
-          sed -i -e 's|Purslane Ltd.|${{ env.compname }}|' ./src/ui/index.tis
-          sed -i -e 's|Purslane Ltd.|${{ env.compname }}|' ./Cargo.toml
-          sed -i -e 's|Purslane Ltd.|${{ env.compname }}|' ./libs/portable/Cargo.toml
-          sed -i -e 's|Purslane Ltd|${{ env.compname }}|' ./src/main.rs
-             
       - name: change url to custom
         if: env.urlLink != 'https://rustdesk.com'
         continue-on-error: true

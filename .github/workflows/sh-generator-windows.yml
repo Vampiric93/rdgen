@@ -86,9 +86,11 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Preserve Windows variant packaging script
+      - name: Preserve RDGen build scripts
         shell: pwsh
-        run: Copy-Item ./.github/scripts/build-windows-variants.ps1 "$env:RUNNER_TEMP/build-windows-variants.ps1" -Force
+        run: |
+          Copy-Item ./.github/scripts/build-windows-variants.ps1 "$env:RUNNER_TEMP/build-windows-variants.ps1" -Force
+          Copy-Item ./.github/scripts/apply-client-branding.py "$env:RUNNER_TEMP/apply-client-branding.py" -Force
         
       - uses: actions/download-artifact@v4
         with:
@@ -171,6 +173,12 @@ jobs:
           repository: rustdesk/rustdesk
           submodules: recursive
 
+      - name: Apply safe company branding
+        shell: pwsh
+        env:
+          RDGEN_COMPANY_NAME: ${{ env.compname }}
+        run: python "$env:RUNNER_TEMP/apply-client-branding.py" --company "$env:RDGEN_COMPANY_NAME" .
+
       - name: Restore bridge files
         uses: actions/download-artifact@master
         with:
@@ -208,11 +216,6 @@ jobs:
           sed -i -e 's|VALUE "InternalName", "rustdesk" "\0"|VALUE "InternalName", "${{ env.appname }}" "\0"|' ./flutter/windows/runner/Runner.rc
           sed -i -e 's|"rustdesk.exe"|"${{ env.filename }}"|' ./flutter/windows/runner/Runner.rc
           sed -i -e 's|"RustDesk"|"${{ env.appname }}"|' ./flutter/windows/runner/Runner.rc
-          # ./src/lang/en.rs
-          # change powered by rustdek to powered by compname
-          if [ ! -z "${{ env.compname }}" ]; then
-            find ./src/lang -name "*.rs" -exec sed -i '/powered_by_me/s|RustDesk|${{ env.compname }}|g' {} \;
-          fi
           find ./src/lang -name "*.rs" -exec sed -i -e 's|RustDesk|${{ env.appname }}|' {} \;
           sed -i -e 's|RustDesk|${{ env.appname }}|' ./res/msi/Package/License.rtf
 
@@ -236,28 +239,6 @@ jobs:
           sed -i -e 's|reg delete HKEY_CLASSES_ROOT\\\\.{ext} /f|reg delete \\\"HKEY_CLASSES_ROOT\\\\.{ext}\\\" /f|' ./src/platform/windows.rs
           sed -i -e 's|reg delete HKEY_CLASSES_ROOT\\\\{ext} /f|reg delete \\\"HKEY_CLASSES_ROOT\\\\{ext}\\\" /f|' ./src/platform/windows.rs
           
-      - name: change company name
-        if: env.compname != 'Purslane Ltd'
-        continue-on-error: true
-        shell: bash
-        run: |
-          sed -i -e 's|Purslane Tech Pte. Ltd.|${{ env.compname }}|' ./flutter/lib/desktop/pages/desktop_setting_page.dart
-          sed -i -e 's|Purslane Tech Pte. Ltd.|${{ env.compname }}|' ./res/msi/preprocess.py
-          sed -i -e 's|r"Purslane(?: Tech Pte\\.)? Ltd"|"${{ env.compname }}"|' ./res/msi/preprocess.py
-          sed -i -e 's|Purslane Tech Pte. Ltd.|${{ env.compname }}|' ./flutter/windows/runner/Runner.rc
-          sed -i -e 's|Purslane Tech Pte. Ltd.|${{ env.compname }}|' ./Cargo.toml
-          sed -i -e 's|Purslane Tech Pte. Ltd.|${{ env.compname }}|' ./libs/portable/Cargo.toml
-          sed -i -e 's|Purslane Tech Pte. Ltd.|${{ env.compname }}|' ./res/msi/Package/License.rtf
-          sed -i -e 's|Purslane Tech Pte. Ltd.|${{ env.compname }}|' ./src/main.rs
-          sed -i -e 's|Purslane Ltd|${{ env.compname }}|' ./flutter/lib/desktop/pages/desktop_setting_page.dart
-          sed -i -e 's|PURSLANE|${{ env.compname }}|' ./res/msi/preprocess.py
-          sed -i -e 's|Purslane Ltd|${{ env.compname }}|' ./res/msi/preprocess.py
-          sed -i -e 's|Purslane Ltd|${{ env.compname }}|' ./flutter/windows/runner/Runner.rc
-          sed -i -e 's|Purslane Ltd|${{ env.compname }}|' ./Cargo.toml
-          sed -i -e 's|Purslane Ltd|${{ env.compname }}|' ./libs/portable/Cargo.toml
-          sed -i -e 's|Purslane Ltd|${{ env.compname }}|' ./res/msi/Package/License.rtf
-          sed -i -e 's|Purslane Ltd|${{ env.compname }}|' ./src/main.rs
-             
       - name: change url to custom
         if: env.urlLink != 'https://rustdesk.com'
         continue-on-error: true
