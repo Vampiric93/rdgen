@@ -186,8 +186,8 @@ if ($keyTestExitCode -ne 0) {
     throw 'SSH key authentication test failed'
 }
 
-& netsh.exe http delete urlacl url=http://127.0.0.1:9000/ 2>$null | Out-Null
-& netsh.exe http add urlacl url=http://127.0.0.1:9000/ "user=$($identity.Name)" | Out-Null
+& netsh.exe http delete urlacl url=http://127.0.0.1:19090/ 2>$null | Out-Null
+& netsh.exe http add urlacl url=http://127.0.0.1:19090/ "user=$($identity.Name)" | Out-Null
 if ($LASTEXITCODE -ne 0) {
     throw 'Could not reserve the local signing-agent URL'
 }

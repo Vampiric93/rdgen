@@ -57,9 +57,9 @@ try {
         throw 'Could not start the SSH tunnel'
     }
 
-    Write-Host 'RDGen Signer is ready. Keep this window open while building.' -ForegroundColor Green
+    Write-Host 'Starting RDGen Signer. Keep this window open while building.' -ForegroundColor Green
     Write-Host 'If Rutoken asks for a PIN, enter it in the token window.' -ForegroundColor Yellow
-    & $agentScript -ApiKey $apiKey
+    & $agentScript -ListenPrefix 'http://127.0.0.1:19090/' -ApiKey $apiKey
 }
 finally {
     if ($tunnelJob) {
