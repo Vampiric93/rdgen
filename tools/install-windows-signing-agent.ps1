@@ -114,8 +114,9 @@ finally {
 if (-not $keyInstalled -or $apiKeyRegenerated) {
     Write-Host ''
     Write-Host "Enter the password for $target once. It will not be saved." -ForegroundColor Yellow
-    $bootstrapCommand = @'
+$bootstrapCommand = @'
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 $payload = [Console]::In.ReadToEnd() | ConvertFrom-Json
 $key = [string]$payload.publicKey
 $apiKey = [string]$payload.apiKey

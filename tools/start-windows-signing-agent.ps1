@@ -6,6 +6,7 @@
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+$InstallDirectory = [IO.Path]::GetFullPath($InstallDirectory.Trim().Trim('"'))
 
 function ConvertTo-PlainText {
     param([Security.SecureString]$SecureValue)
