@@ -118,8 +118,11 @@
                 <a href='/download?filename={{filename}}-x86_64.apk&uuid={{uuid}}' class="download-link">Download {{filename}}-x86_64.apk</a>
                 <a href='/download?filename={{filename}}-armv7.apk&uuid={{uuid}}' class="download-link">Download {{filename}}-armv7.apk</a>
             {% elif platform == 'macos' %}
-                <a href='/download?filename={{filename}}-x86_64.dmg&uuid={{uuid}}' class="download-link">Download {{filename}}-x86_64.dmg</a>
-                <a href='/download?filename={{filename}}-aarch64.dmg&uuid={{uuid}}' class="download-link">Download {{filename}}-aarch64.dmg</a>
+                {% for output_file in available_files %}
+                    <a href='/download?filename={{output_file}}&uuid={{uuid}}' class="download-link">Download {{output_file}}</a>
+                {% empty %}
+                    <p>No macOS files were created.</p>
+                {% endfor %}
             {% else %}
                 <p>Error: No file generated</p>
             {% endif %}
