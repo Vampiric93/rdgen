@@ -26,7 +26,6 @@ env:
   ANDROID_FLUTTER_VERSION: "3.24.5" # >= 3.16 is very slow on my android phone, but work well on most of others. We may switch to new flutter after changing to texture rendering (I believe it can solve my problem).
   FLUTTER_RUST_BRIDGE_VERSION: "1.80.1"  # for arm64 linux because official Dart SDK does not work
   FLUTTER_ELINUX_VERSION: "3.16.9"
-  TAG_NAME: "${{ inputs.upload-tag }}"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
   # vcpkg version: 2024.07.12
   VCPKG_COMMIT_ID: "120deac3062162151622ca4860575a33844ba10b"
@@ -82,7 +81,9 @@ jobs:
 
       - name: Preserve safe branding script
         shell: bash
-        run: cp ./.github/scripts/apply-client-branding.py "$RUNNER_TEMP/apply-client-branding.py"
+        run: |
+          cp ./.github/scripts/apply-client-branding.py "$RUNNER_TEMP/apply-client-branding.py"
+          cp ./.github/scripts/prepare-macos-brands.py "$RUNNER_TEMP/prepare-macos-brands.py"
         
       - uses: actions/download-artifact@v4
         with:
@@ -94,7 +95,7 @@ jobs:
           zip_password: ${{ secrets.ZIP_PASSWORD }}
 
       - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v6
+        uses: actions/github-script@v9
         with:
           script: |
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
@@ -540,23 +541,24 @@ jobs:
           fi
           cp "$RDGEN_LOGO_PATH" "$ASSETS_DIR/logo.png"
 
+      - name: Prepare branded macOS app bundles
+        shell: bash
+        run: |
+          APP_BUNDLE=$(find flutter/build/macos/Build/Products/Release -maxdepth 1 -type d -name '*.app' | head -n 1)
+          if [ -z "$APP_BUNDLE" ]; then exit 1; fi
+          python3 "$RUNNER_TEMP/prepare-macos-brands.py" \
+            --bundle "$APP_BUNDLE" \
+            --arch "${{ matrix.job.arch }}" \
+            --app-name "${{ env.appname }}" \
+            --workspace "$GITHUB_WORKSPACE" \
+            --output "$RUNNER_TEMP/rdgen-macos-brands.json"
+
       - name: Sign macOS app bundle
         if: env.MACOS_P12_BASE64 != ''
         shell: bash
         env:
           P12_PASSWORD: ${{ secrets.MACOS_P12_PASSWORD }}
         run: |
-          cd flutter/build/macos/Build/Products/Release
-          if [ -d "RustDesk.app" ]; then
-            mv "RustDesk.app" "${{ env.appname }}.app"
-          fi
-
-          TARGET_APP="${{ env.appname }}.app"
-          if [ ! -d "$TARGET_APP/Contents/MacOS" ]; then
-            echo "Invalid app bundle: $TARGET_APP"
-            exit 1
-          fi
-
           CERT_PATH="$RUNNER_TEMP/rdgen-signing.p12"
           KEYCHAIN_PATH="$RUNNER_TEMP/rdgen-signing.keychain-db"
           KEYCHAIN_PASSWORD=$(uuidgen)
@@ -580,103 +582,66 @@ jobs:
             exit 1
           fi
 
-          xattr -cr "$TARGET_APP" || true
-          codesign --force --deep --options runtime --timestamp --sign "$IDENTITY" "$TARGET_APP"
-          codesign --verify --deep --strict --verbose=2 "$TARGET_APP"
+          while IFS= read -r TARGET_APP; do
+            if [ ! -d "$TARGET_APP/Contents/MacOS" ]; then exit 1; fi
+            xattr -cr "$TARGET_APP" || true
+            codesign --force --deep --options runtime --timestamp --sign "$IDENTITY" "$TARGET_APP"
+            codesign --verify --deep --strict --verbose=2 "$TARGET_APP"
+          done < <(jq -r '.[].bundle' "$RUNNER_TEMP/rdgen-macos-brands.json")
 
       - name: Ad-hoc Sign macOS app bundle (Fallback)
         if: env.MACOS_P12_BASE64 == '' || env.MACOS_P12_BASE64 == null
         shell: bash
         run: |
-            cd flutter/build/macos/Build/Products/Release
-            
-            # Renombrar RustDesk.app al nombre de la marca blanca si aplica
-            if [ -d "RustDesk.app" ]; then
-              mv "RustDesk.app" "${{ env.appname }}.app"
-              echo "RustDesk.app renombrado a ${{ env.appname }}.app"
-            fi
-            
-            TARGET_APP="${{ env.appname }}.app"
-            
+          while IFS= read -r TARGET_APP; do
             if [ -d "$TARGET_APP" ]; then
-              echo "Limpiando atributos extendidos..."
               xattr -cr "$TARGET_APP" || true
-              
-              echo "Re-firmando $TARGET_APP de forma Ad-Hoc y recursiva..."
               codesign --force --deep --sign - "$TARGET_APP"
-              echo "Firma Ad-Hoc completada con exito."
             else
-              echo "Error: No se encontro la app bundle en $TARGET_APP para firmar."
               exit 1
             fi
+          done < <(jq -r '.[].bundle' "$RUNNER_TEMP/rdgen-macos-brands.json")
 
       - name: Create DMG
+        shell: bash
         run: |
-          cd /Users/runner/work/${{ github.event.repository.name }}/${{ github.event.repository.name }}/flutter/build/macos/Build/Products/Release
-          # Print directory contents for debugging
-          echo "Directory contents:"
-          ls -la
-          # Find the actual .app bundle
-          if [ -d "RustDesk.app" ]; then
-            # First rename the app if it's still called RustDesk.app
-            mv "RustDesk.app" "${{ env.appname }}.app"
-          fi
-          if [ ! -d "${{ env.appname }}.app" ]; then
-            echo "Could not find .app bundle!"
-            exit 1
-          fi
-          echo "Creating DMG for ${{ env.appname }}.app"
-          create-dmg \
-            --volname "${{ env.appname }}" \
-            --window-pos 200 120 \
-            --window-size 800 400 \
-            --icon-size 100 \
-            --icon "${{ env.appname }}.app" 200 190 \
-            --hide-extension "${{ env.appname }}.app" \
-            --app-drop-link 600 185 \
-            "${{ env.appname }}-${{ matrix.job.arch }}.dmg" \
-            "${{ env.appname }}.app"
-          mv "${{ env.appname }}-${{ matrix.job.arch }}.dmg" $GITHUB_WORKSPACE/
-  
-      - name: Rename rustdesk
-        if: env.UPLOAD_ARTIFACT == 'true'
-        run: |
-          cd $GITHUB_WORKSPACE
-          echo "Directory contents:"
-          ls -la
-            
-          # Find the DMG file dynamically
-          DMG_FILE=$(find . -name "${{ env.appname }}-${{ matrix.job.arch }}.dmg")
-            
-          if [ -n "$DMG_FILE" ]; then
-            echo "Found DMG file: $DMG_FILE"
-            mv "$DMG_FILE" "${{ env.filename }}-${{ matrix.job.arch }}.dmg"
-            echo "Renamed to ${{ env.filename }}-${{ matrix.job.arch }}.dmg"
-          else
-            echo "No DMG file found matching the pattern"
-            exit 1
-          fi
+          while IFS=$'\t' read -r APP_BUNDLE DMG_PATH; do
+            APP_FILE=$(basename "$APP_BUNDLE")
+            rm -f "$DMG_PATH"
+            create-dmg \
+              --volname "${{ env.appname }}" \
+              --window-pos 200 120 \
+              --window-size 800 400 \
+              --icon-size 100 \
+              --icon "$APP_FILE" 200 190 \
+              --hide-extension "$APP_FILE" \
+              --app-drop-link 600 185 \
+              "$DMG_PATH" \
+              "$APP_BUNDLE"
+          done < <(jq -r '.[] | [.bundle, .dmg] | @tsv' "$RUNNER_TEMP/rdgen-macos-brands.json")
 
       - name: Encrypt DMG for local publisher
         if: ${{ env.rdgen == 'true' }}
         shell: python
         env:
           OUTPUT_ZIP_PASSWORD: ${{ secrets.ZIP_PASSWORD }}
-          DMG_PATH: ${{ github.workspace }}/${{ env.filename }}-${{ matrix.job.arch }}.dmg
+          DMG_GLOB: ${{ github.workspace }}/*-${{ matrix.job.arch }}.dmg
           OUTPUT_ZIP: ${{ github.workspace }}/macos-output-${{ matrix.job.arch }}.zip
         run: |
           import os
           import pyzipper
 
-          dmg_path = os.environ['DMG_PATH']
+          import glob
+          dmg_paths = glob.glob(os.environ['DMG_GLOB'])
           output_zip = os.environ['OUTPUT_ZIP']
           password = os.environ['OUTPUT_ZIP_PASSWORD'].encode()
-          if not os.path.isfile(dmg_path):
-              raise FileNotFoundError(dmg_path)
+          if not dmg_paths:
+              raise FileNotFoundError(os.environ['DMG_GLOB'])
 
           with pyzipper.AESZipFile(output_zip, 'w', compression=pyzipper.ZIP_DEFLATED, encryption=pyzipper.WZ_AES) as archive:
               archive.setpassword(password)
-              archive.write(dmg_path, arcname=os.path.basename(dmg_path))
+              for dmg_path in dmg_paths:
+                  archive.write(dmg_path, arcname=os.path.basename(dmg_path))
 
       - name: Upload encrypted DMG for local publisher
         if: ${{ env.rdgen == 'true' }}
@@ -690,11 +655,12 @@ jobs:
         if: ${{ env.rdgen == 'false' }}
         shell: bash
         run: |
-          curl -i -X POST \
-            -H "Content-Type: multipart/form-data" \
-            -H "Authorization: Bearer ${{ env.token }}" \
-            -F "file=@$GITHUB_WORKSPACE/${{ env.filename }}-${{ matrix.job.arch }}.dmg" \
-            "${{ env.apiServer }}/api/save_custom_client"
+          for artifact in "$GITHUB_WORKSPACE"/*-${{ matrix.job.arch }}.dmg; do
+            curl --fail-with-body -X POST \
+              -H "Authorization: Bearer ${{ env.token }}" \
+              -F "file=@${artifact}" \
+              "${{ env.apiServer }}/api/save_custom_client"
+          done
 
   publish-macos:
     name: Publish macOS files to RDGen
@@ -742,10 +708,11 @@ jobs:
               with pyzipper.AESZipFile(archive_path) as archive:
                   archive.setpassword(os.environ['OUTPUT_ZIP_PASSWORD'].encode())
                   dmg_names = [name for name in archive.namelist() if name.endswith('.dmg') and os.path.basename(name) == name]
-                  if len(dmg_names) != 1:
-                      raise RuntimeError(f'Expected one DMG in {archive_path}')
-                  with archive.open(dmg_names[0]) as source, open(os.path.join(output_dir, dmg_names[0]), 'wb') as output:
-                      output.write(source.read())
+                  if not dmg_names:
+                      raise RuntimeError(f'Expected at least one DMG in {archive_path}')
+                  for dmg_name in dmg_names:
+                      with archive.open(dmg_name) as source, open(os.path.join(output_dir, dmg_name), 'wb') as output:
+                          output.write(source.read())
 
       - name: Send macOS files to RDGen server
         if: env.rdgen == 'true'
@@ -754,8 +721,10 @@ jobs:
           output_dir="${RUNNER_TEMP}/rdgen-macos-output"
           shopt -s nullglob
           files=("$output_dir"/*.dmg)
-          if [ "${#files[@]}" -ne 2 ]; then
-            echo "Expected 2 DMG files, found ${#files[@]}"
+          brand_count=$(python -c 'import json,os; print(len(json.loads(os.environ.get("brands_json") or "[]")) or 1)')
+          expected_count=$((brand_count * 2))
+          if [ "${#files[@]}" -ne "$expected_count" ]; then
+            echo "Expected $expected_count DMG files, found ${#files[@]}"
             exit 1
           fi
           for artifact in "${files[@]}"; do

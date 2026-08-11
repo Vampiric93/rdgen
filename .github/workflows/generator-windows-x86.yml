@@ -26,7 +26,6 @@ env:
   ANDROID_FLUTTER_VERSION: "3.24.5"
   # for arm64 linux because official Dart SDK does not work
   FLUTTER_ELINUX_VERSION: "3.16.9"
-  TAG_NAME: "${{ inputs.upload-tag }}"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
   # vcpkg version: 2025.08.27
   # If we change the `VCPKG COMMIT_ID`, please remember:
@@ -89,6 +88,8 @@ jobs:
         shell: pwsh
         run: |
           Copy-Item ./.github/scripts/build-windows-x86-variants.ps1 "$env:RUNNER_TEMP/build-windows-x86-variants.ps1" -Force
+          Copy-Item ./.github/scripts/build-windows-brand-batch.ps1 "$env:RUNNER_TEMP/build-windows-brand-batch.ps1" -Force
+          Copy-Item ./.github/scripts/prepare-windows-brand-runtimes.ps1 "$env:RUNNER_TEMP/prepare-windows-brand-runtimes.ps1" -Force
           Copy-Item ./.github/scripts/apply-client-branding.py "$env:RUNNER_TEMP/apply-client-branding.py" -Force
         
       - uses: actions/download-artifact@v4
@@ -141,7 +142,7 @@ jobs:
           data: '{"uuid": "${{ env.uuid }}"}'
 
       - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v6
+        uses: actions/github-script@v9
         with:
           script: |
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
@@ -424,39 +425,43 @@ jobs:
             echo "list ./libs/portable/Runner.res";
             ls -l ./libs/portable/Runner.res;
           fi
-      
+
+      - name: Prepare branded Windows runtimes
+        shell: pwsh
+        run: '& "$env:RUNNER_TEMP/prepare-windows-brand-runtimes.ps1" -RuntimeDirectory Release'
+
       - name: zip dlls
         shell: pwsh
         run: |
-          Compress-Archive -Path ./Release/*.dll, ./Release/*.exe -DestinationPath ./Release/unsigned_files.zip -CompressionLevel Fastest
+          Compress-Archive -Path ./.rdgen-brands/* -DestinationPath ./unsigned-runtime-files.zip -CompressionLevel Fastest
 
       - name: sign dlls
         shell: bash
         run: |
           if [ "${SIGNING_ENABLED:-false}" = "true" ]; then
-            curl --fail-with-body -sS -X POST --data-binary "@./Release/unsigned_files.zip" \
+            curl --fail-with-body -sS -X POST --data-binary "@./unsigned-runtime-files.zip" \
               -H "Content-Type: application/zip" \
               -H "X-API-KEY: ${SIGN_API_KEY_EFFECTIVE}" \
               -m 1800 \
-              "${SIGN_BASE_URL_EFFECTIVE}/sign/" -o ./Release/signed_files.zip
+              "${SIGN_BASE_URL_EFFECTIVE}/sign/" -o ./signed-runtime-files.zip
           else
             echo "Signing skipped - signing URL or API key not configured"
-            cp ./Release/unsigned_files.zip ./Release/signed_files.zip
+            cp ./unsigned-runtime-files.zip ./signed-runtime-files.zip
           fi
 
       - name: unzip dlls
         shell: pwsh
         run: |
-          Expand-Archive -Path ./Release/signed_files.zip -DestinationPath ./Release/ -Force
-          Remove-Item ./Release/unsigned_files.zip
-          Remove-Item ./Release/signed_files.zip
+          Remove-Item ./.rdgen-brands -Recurse -Force
+          Expand-Archive -Path ./signed-runtime-files.zip -DestinationPath ./.rdgen-brands -Force
+          Remove-Item ./unsigned-runtime-files.zip, ./signed-runtime-files.zip
 
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2
 
       - name: Build selected x86 EXE and MSI variants
         shell: pwsh
-        run: '& "$env:RUNNER_TEMP/build-windows-x86-variants.ps1"'
+        run: '& "$env:RUNNER_TEMP/build-windows-brand-batch.ps1" -RuntimeDirectory Release -VariantScript "$env:RUNNER_TEMP/build-windows-x86-variants.ps1"'
 
       - name: zip exe and msi
         shell: pwsh
@@ -490,8 +495,10 @@ jobs:
         run: |
           $directions = @($env:directions -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
           if ($directions.Count -eq 0) { $directions = @('both') }
+          $brands = @($env:brands_json | ConvertFrom-Json)
+          if ($brands.Count -eq 0) { $brands = @([pscustomobject]@{ filename = $env:filename }) }
           $artifacts = @(Get-ChildItem ./SignOutput -File | Where-Object { $_.Extension -in '.exe', '.msi' })
-          $expectedCount = $directions.Count * 2
+          $expectedCount = $directions.Count * $brands.Count * 2
           if ($artifacts.Count -ne $expectedCount) {
             throw "Expected $expectedCount signed artifacts, found $($artifacts.Count)"
           }

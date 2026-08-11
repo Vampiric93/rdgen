@@ -26,7 +26,6 @@ env:
   ANDROID_FLUTTER_VERSION: "3.24.5" 
   # for arm64 linux because official Dart SDK does not work
   FLUTTER_ELINUX_VERSION: "3.16.9"
-  TAG_NAME: "${{ inputs.upload-tag }}"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
   # vcpkg version: 2024.07.12
   VCPKG_COMMIT_ID: "120deac3062162151622ca4860575a33844ba10b"
@@ -90,6 +89,8 @@ jobs:
         shell: pwsh
         run: |
           Copy-Item ./.github/scripts/build-windows-variants.ps1 "$env:RUNNER_TEMP/build-windows-variants.ps1" -Force
+          Copy-Item ./.github/scripts/build-windows-brand-batch.ps1 "$env:RUNNER_TEMP/build-windows-brand-batch.ps1" -Force
+          Copy-Item ./.github/scripts/prepare-windows-brand-runtimes.ps1 "$env:RUNNER_TEMP/prepare-windows-brand-runtimes.ps1" -Force
           Copy-Item ./.github/scripts/apply-client-branding.py "$env:RUNNER_TEMP/apply-client-branding.py" -Force
         
       - uses: actions/download-artifact@v4
@@ -142,7 +143,7 @@ jobs:
           data: '{"uuid": "${{ env.uuid }}"}'
 
       - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v6
+        uses: actions/github-script@v9
         with:
           script: |
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
@@ -469,34 +470,36 @@ jobs:
         with:
           name: topmostwindow-artifacts
           path: "./rustdesk"
-      
+
+      - name: Prepare branded Windows runtimes
+        shell: pwsh
+        run: '& "$env:RUNNER_TEMP/prepare-windows-brand-runtimes.ps1" -RuntimeDirectory rustdesk'
+
       - name: zip dlls
-        continue-on-error: true
         shell: pwsh
         run: |
-          Compress-Archive -Path ./rustdesk/*.dll, ./rustdesk/*.exe -DestinationPath ./rustdesk/unsigned_files.zip -CompressionLevel Fastest
+          Compress-Archive -Path ./.rdgen-brands/* -DestinationPath ./unsigned-runtime-files.zip -CompressionLevel Fastest
 
       - name: sign dlls
         shell: bash
         run: |
           if [ "${SIGNING_ENABLED:-false}" = "true" ]; then
-            curl --fail-with-body -sS -X POST --data-binary "@./rustdesk/unsigned_files.zip" \
+            curl --fail-with-body -sS -X POST --data-binary "@./unsigned-runtime-files.zip" \
               -H "Content-Type: application/zip" \
               -H "X-API-KEY: ${SIGN_API_KEY_EFFECTIVE}" \
               -m 900 \
-              "${SIGN_BASE_URL_EFFECTIVE}/sign/" -o ./rustdesk/signed_files.zip
+              "${SIGN_BASE_URL_EFFECTIVE}/sign/" -o ./signed-runtime-files.zip
           else
             echo "Signing skipped - signing URL or API key not configured"
-            cp ./rustdesk/unsigned_files.zip ./rustdesk/signed_files.zip
+            cp ./unsigned-runtime-files.zip ./signed-runtime-files.zip
           fi
 
       - name: unzip dlls
-        continue-on-error: true
         shell: pwsh
         run: |
-          Expand-Archive -Path ./rustdesk/signed_files.zip -DestinationPath ./rustdesk/ -Force
-          Remove-Item ./rustdesk/unsigned_files.zip
-          Remove-Item ./rustdesk/signed_files.zip
+          Remove-Item ./.rdgen-brands -Recurse -Force
+          Expand-Archive -Path ./signed-runtime-files.zip -DestinationPath ./.rdgen-brands -Force
+          Remove-Item ./unsigned-runtime-files.zip, ./signed-runtime-files.zip
 
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2
@@ -504,7 +507,7 @@ jobs:
       - name: Build selected EXE and MSI variants
         if: env.UPLOAD_ARTIFACT == 'true'
         shell: pwsh
-        run: '& "$env:RUNNER_TEMP/build-windows-variants.ps1"'
+        run: '& "$env:RUNNER_TEMP/build-windows-brand-batch.ps1" -RuntimeDirectory rustdesk -VariantScript "$env:RUNNER_TEMP/build-windows-variants.ps1"'
 
       - name: zip exe and msi
         continue-on-error: true
@@ -542,14 +545,11 @@ jobs:
           max_attempts: 3
           shell: bash
           command: |
-            IFS=',' read -ra selected_directions <<< "${directions:-both}"
-            for direction in "${selected_directions[@]}"; do
-              suffix="$direction"
-              if [ "$direction" = "both" ]; then suffix="full"; fi
-              for extension in exe msi; do
-                artifact="./SignOutput/${filename}-${suffix}.${extension}"
-                curl --fail-with-body -sS -X POST -H "Authorization: Bearer ${token}" -F "file=@${artifact}" -F "uuid=${uuid}" "${{ secrets.GENURL }}/save_custom_client"
-              done
+            shopt -s nullglob
+            artifacts=(./SignOutput/*.exe ./SignOutput/*.msi)
+            if [ "${#artifacts[@]}" -eq 0 ]; then exit 1; fi
+            for artifact in "${artifacts[@]}"; do
+              curl --fail-with-body -sS -X POST -H "Authorization: Bearer ${token}" -F "file=@${artifact}" -F "uuid=${uuid}" "${{ secrets.GENURL }}/save_custom_client"
             done
 
       - name: send file to api server
@@ -560,14 +560,11 @@ jobs:
           max_attempts: 3
           shell: bash
           command: |
-            IFS=',' read -ra selected_directions <<< "${directions:-both}"
-            for direction in "${selected_directions[@]}"; do
-              suffix="$direction"
-              if [ "$direction" = "both" ]; then suffix="full"; fi
-              for extension in exe msi; do
-                artifact="./SignOutput/${filename}-${suffix}.${extension}"
-                curl --fail-with-body -sS -X POST -H "Authorization: Bearer ${token}" -F "file=@${artifact}" "${apiServer}/api/save_custom_client"
-              done
+            shopt -s nullglob
+            artifacts=(./SignOutput/*.exe ./SignOutput/*.msi)
+            if [ "${#artifacts[@]}" -eq 0 ]; then exit 1; fi
+            for artifact in "${artifacts[@]}"; do
+              curl --fail-with-body -sS -X POST -H "Authorization: Bearer ${token}" -F "file=@${artifact}" "${apiServer}/api/save_custom_client"
             done
 
   cleanup:

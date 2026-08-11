@@ -36,15 +36,23 @@ runs:
             }
             archived_names = set(zf.namelist())
             extracted_assets = {}
+            os.makedirs(assets_dir, exist_ok=True)
+            for archive_name in sorted(archived_names):
+                if not archive_name.startswith('assets/') or archive_name.endswith('/'):
+                    continue
+                asset_name = os.path.basename(archive_name)
+                if not asset_name or asset_name != archive_name.removeprefix('assets/'):
+                    raise ValueError(f'Unsafe asset path: {archive_name}')
+                destination = os.path.join(assets_dir, asset_name)
+                with zf.open(archive_name) as source, open(destination, 'wb') as output:
+                    output.write(source.read())
             for asset_name, env_name in asset_env_names.items():
                 archive_name = f'assets/{asset_name}'
                 if archive_name not in archived_names:
                     continue
-                os.makedirs(assets_dir, exist_ok=True)
                 destination = os.path.join(assets_dir, asset_name)
-                with zf.open(archive_name) as source, open(destination, 'wb') as output:
-                    output.write(source.read())
                 extracted_assets[env_name] = destination
+            extracted_assets['RDGEN_ASSETS_DIR'] = assets_dir
 
         with open(os.environ['GITHUB_ENV'], 'a') as env_file:
             for key, value in secrets.items():

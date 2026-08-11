@@ -178,6 +178,26 @@
             margin-top: 5px;
         }
 
+        .brand-card {
+            border: 1px solid #444;
+            border-radius: 6px;
+            margin-top: 14px;
+            padding: 14px;
+        }
+        .brand-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        .brand-card-header strong {
+            color: #fff;
+        }
+        .remove-brand {
+            background: #9b2525;
+            padding: 6px 10px;
+        }
+
       </style>
 </head>
 <body>
@@ -196,6 +216,13 @@
         {% if form.iconfile.errors %}
             <ul class="errorlist">
                 {% for error in form.iconfile.errors %}
+                    <li>{{ error }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+        {% if form.non_field_errors %}
+            <ul class="errorlist">
+                {% for error in form.non_field_errors %}
                     <li>{{ error }}</li>
                 {% endfor %}
             </ul>
@@ -296,6 +323,12 @@
                     {{ form.logofile }}<br><br>
                     <!-- <input type="file" name="logofile" id="logofile" accept="image/png"> -->
                     <div id="logo-preview"></div><br><br>
+                    <div id="batch-branding">
+                        <h3>Additional branded clients</h3>
+                        <p>They inherit all settings and differ only by output name, app icon and logo.</p>
+                        <div id="extra-brands"></div>
+                        <button type="button" id="add-brand"><i class="fas fa-plus"></i> Add another client</button>
+                    </div><br><br>
                     <label for="{{ form.privacyfile.id_for_label }}">Custom Privacy Screen (in .png format)</label>
                     {{ form.privacyfile }}<br><br>
                     <!-- <input type="file" name="iconfile" id="iconfile" accept="image/png"> -->
@@ -347,13 +380,55 @@
         </div>
     </form>
     <script>
+        let nextBrandId = 0;
+
+        function addBrand() {
+            const id = nextBrandId++;
+            const card = document.createElement('div');
+            card.className = 'brand-card';
+            card.innerHTML = `
+                <input type="hidden" name="extra_brand_id" value="${id}">
+                <div class="brand-card-header">
+                    <strong>Additional client</strong>
+                    <button type="button" class="remove-brand">Remove</button>
+                </div>
+                <label for="extra_suffix_${id}">Optional file suffix (empty = automatic number):</label>
+                <input type="text" id="extra_suffix_${id}" name="extra_suffix_${id}" placeholder="secondbrand">
+                <label for="extra_iconfile_${id}">App icon (square PNG):</label>
+                <input type="file" id="extra_iconfile_${id}" name="extra_iconfile_${id}" accept="image/png">
+                <div class="extra-icon-preview"></div><br>
+                <label for="extra_logofile_${id}">App logo (PNG):</label>
+                <input type="file" id="extra_logofile_${id}" name="extra_logofile_${id}" accept="image/png">
+                <div class="extra-logo-preview"></div>
+            `;
+            card.querySelector('.remove-brand').addEventListener('click', () => card.remove());
+            card.querySelector(`#extra_iconfile_${id}`).addEventListener('change', event => {
+                previewImageElement(event.target, card.querySelector('.extra-icon-preview'));
+            });
+            card.querySelector(`#extra_logofile_${id}`).addEventListener('change', event => {
+                previewImageElement(event.target, card.querySelector('.extra-logo-preview'));
+            });
+            document.getElementById('extra-brands').appendChild(card);
+        }
+
+        function updateBatchBrandingVisibility() {
+            const platform = document.getElementById('id_platform').value;
+            const enabled = ['windows', 'windows-x86', 'macos'].includes(platform);
+            document.getElementById('batch-branding').style.display = enabled ? 'block' : 'none';
+            document.querySelectorAll('#extra-brands input').forEach(input => input.disabled = !enabled);
+        }
+
+        document.getElementById('add-brand').addEventListener('click', addBrand);
         document.querySelectorAll('.platform-icon').forEach(icon => {
             icon.addEventListener('click', function() {
                 document.querySelectorAll('.platform-icon').forEach(i => i.classList.remove('active'));
                 this.classList.add('active');
                 document.getElementById('id_platform').value = this.dataset.platform;
+                updateBatchBrandingVisibility();
             });
         });
+        document.getElementById('id_platform').addEventListener('change', updateBatchBrandingVisibility);
+        updateBatchBrandingVisibility();
         document.getElementById("{{ form.iconfile.id_for_label }}").addEventListener('change', function(event) {
             previewImage(event.target, 'icon-preview');
         });
@@ -456,15 +531,18 @@
             }
         });
         function previewImage(input, previewContainerId) {
+            previewImageElement(input, document.getElementById(previewContainerId));
+        }
+        function previewImageElement(input, previewContainer) {
             if (input.files && input.files[0]) {
                 var reader = new FileReader();
                 reader.onload = function(e) {
                     var img = document.createElement('img');
-                    img.src = e.target.result;   
+                    img.src = e.target.result;  
                     img.style.maxWidth = '300px';
                     img.style.maxHeight = '60px';
-                    document.getElementById(previewContainerId).innerHTML = '';
-                    document.getElementById(previewContainerId).appendChild(img);
+                    previewContainer.innerHTML = '';
+                    previewContainer.appendChild(img);
                 };
                 reader.readAsDataURL(input.files[0]);
             }

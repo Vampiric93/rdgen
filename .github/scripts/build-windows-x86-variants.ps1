@@ -129,6 +129,7 @@ if ($invalidDirections.Count -gt 0) {
 
 $appName = if ([string]::IsNullOrWhiteSpace($env:appname)) { 'rustdesk' } else { $env:appname }
 $fileName = if ([string]::IsNullOrWhiteSpace($env:filename)) { 'rustdesk' } else { $env:filename }
+$directionSeparator = if ([string]::IsNullOrEmpty($env:RDGEN_DIRECTION_SEPARATOR)) { '-' } else { $env:RDGEN_DIRECTION_SEPARATOR }
 $originalExecutable = Join-Path $rustdeskDirectory 'rustdesk.exe'
 $applicationExecutable = Join-Path $rustdeskDirectory "$appName.exe"
 
@@ -144,9 +145,6 @@ $manifest = @(Get-Content -LiteralPath $manifestPath | Where-Object { $_ -notmat
 [IO.File]::WriteAllLines($manifestPath, $manifest, [Text.UTF8Encoding]::new($false))
 
 New-Item -ItemType Directory -Path $signOutputDirectory -Force | Out-Null
-Get-ChildItem -LiteralPath $signOutputDirectory -File -ErrorAction SilentlyContinue |
-    Where-Object { $_.Extension -in '.exe', '.msi' } |
-    Remove-Item -Force
 
 Push-Location $portableDirectory
 try {
@@ -218,7 +216,7 @@ foreach ($direction in $directions) {
     if (-not (Test-Path -LiteralPath $portableOutput -PathType Leaf)) {
         throw "Portable EXE output was not created for $direction"
     }
-    Move-Item -LiteralPath $portableOutput -Destination (Join-Path $signOutputDirectory "$fileName-$suffix.exe") -Force
+    Move-Item -LiteralPath $portableOutput -Destination (Join-Path $signOutputDirectory "$fileName$directionSeparator$suffix.exe") -Force
 
     Push-Location $msiDirectory
     try {
@@ -231,14 +229,17 @@ foreach ($direction in $directions) {
         if (-not $msiOutput) {
             throw "MSI output was not created for $direction"
         }
-        Copy-Item -LiteralPath $msiOutput.FullName -Destination (Join-Path $signOutputDirectory "$fileName-$suffix.msi") -Force
+        Copy-Item -LiteralPath $msiOutput.FullName -Destination (Join-Path $signOutputDirectory "$fileName$directionSeparator$suffix.msi") -Force
     }
     finally {
         Pop-Location
     }
 }
 
-$artifacts = @(Get-ChildItem -LiteralPath $signOutputDirectory -File | Where-Object { $_.Extension -in '.exe', '.msi' })
+$artifactPrefix = "$fileName$directionSeparator"
+$artifacts = @(Get-ChildItem -LiteralPath $signOutputDirectory -File | Where-Object {
+    $_.Extension -in '.exe', '.msi' -and $_.BaseName.StartsWith($artifactPrefix, [StringComparison]::OrdinalIgnoreCase)
+})
 $expectedCount = $directions.Count * 2
 if ($artifacts.Count -ne $expectedCount) {
     throw "Expected $expectedCount x86 artifacts, found $($artifacts.Count)"

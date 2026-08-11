@@ -20,6 +20,71 @@ from PIL import Image
 from urllib.parse import quote
 
 
+MAX_BRANDS_PER_BUILD = 20
+
+
+def _sanitize_output_name(value):
+    value = (value or '').strip()
+    if not value or not all(char.isascii() for char in value):
+        raise ValueError('Client file name must contain English characters only.')
+    value = re.sub(r'[^\w\s-]', '_', value).strip().replace(' ', '_')
+    if not value:
+        raise ValueError('Client file name is empty after removing unsupported characters.')
+    return value
+
+
+def _sanitize_brand_suffix(value):
+    value = (value or '').strip()
+    if not value:
+        return ''
+    return _sanitize_output_name(value)
+
+
+def _validate_brand_image(upload, *, square=False):
+    if not upload:
+        return
+    try:
+        try:
+            image = Image.open(upload)
+            image_format = image.format
+            image_size = image.size
+            image.verify()
+        except (OSError, ValueError) as error:
+            raise ValueError('Invalid PNG image.') from error
+        if image_format != 'PNG':
+            raise ValueError('Only PNG images are allowed.')
+        if square and image_size[0] != image_size[1]:
+            raise ValueError('App icon dimensions must be square.')
+    finally:
+        upload.seek(0)
+
+
+def _collect_extra_brands(request):
+    brand_ids = request.POST.getlist('extra_brand_id')
+    if len(brand_ids) > MAX_BRANDS_PER_BUILD - 1:
+        raise ValueError(f'A build can contain at most {MAX_BRANDS_PER_BUILD} clients.')
+
+    brands = []
+    suffixes = set()
+    for position, brand_id in enumerate(brand_ids, start=2):
+        if not brand_id.isdigit():
+            raise ValueError('Invalid additional client identifier.')
+        suffix = _sanitize_brand_suffix(request.POST.get(f'extra_suffix_{brand_id}')) or str(position)
+        normalized = suffix.casefold()
+        if normalized in suffixes:
+            raise ValueError(f'Duplicate client suffix: {suffix}')
+        suffixes.add(normalized)
+
+        icon = request.FILES.get(f'extra_iconfile_{brand_id}')
+        logo = request.FILES.get(f'extra_logofile_{brand_id}')
+        if not icon and not logo:
+            raise ValueError(f'Add an icon or logo for additional client {position}.')
+        _validate_brand_image(icon, square=True)
+        _validate_brand_image(logo)
+        brands.append({'suffix': suffix, 'iconfile': icon, 'logofile': logo})
+    return brands
+
+
 def generate_custom_client(params, full_url):
     """
     Core generation logic shared by web form and JSON API.
@@ -73,7 +138,6 @@ def generate_custom_client(params, full_url):
     androidappid = params.get('androidappid', '')
     if not androidappid:
         androidappid = "com.carriez.flutter_hbb"
-    compname = compname.replace("&","\\&")
     permPass = params.get('permanentPassword', '')
     theme = params.get('theme', 'system')
     themeDorO = params.get('themeDorO', 'default')
@@ -99,10 +163,9 @@ def generate_custom_client(params, full_url):
     enableCamera = params.get('enableCamera', True)
     enableTerminal = params.get('enableTerminal', True)
 
-    if all(char.isascii() for char in filename):
-        filename = re.sub(r'[^\w\s-]', '_', filename).strip()
-        filename = filename.replace(" ","_")
-    else:
+    try:
+        filename = _sanitize_output_name(filename)
+    except ValueError:
         filename = "rustdesk"
     if not all(char.isascii() for char in appname):
         appname = "rustdesk"
@@ -138,6 +201,24 @@ def generate_custom_client(params, full_url):
         privacylink_url = "false"
         privacylink_uuid = "false"
         privacylink_file = "false"
+
+    brand_manifest = [{
+        'filename': filename,
+        'icon': 'icon.png' if iconlink_url != 'false' else '',
+        'logo': 'logo.png' if logolink_url != 'false' else '',
+    }]
+    for index, brand in enumerate(params.get('extra_brands', []), start=1):
+        icon_name = f'brand-{index}-icon.png' if brand.get('iconfile') else ''
+        logo_name = f'brand-{index}-logo.png' if brand.get('logofile') else ''
+        if icon_name:
+            save_png(brand['iconfile'], myuuid, full_url, icon_name)
+        if logo_name:
+            save_png(brand['logofile'], myuuid, full_url, logo_name)
+        brand_manifest.append({
+            'filename': f"{filename}_{_sanitize_brand_suffix(brand.get('suffix'))}",
+            'icon': icon_name,
+            'logo': logo_name,
+        })
 
     ###create the custom.txt json here and send in as inputs below
     decodedCustom = {}
@@ -271,7 +352,8 @@ def generate_custom_client(params, full_url):
         "removeNewVersionNotif": 'true' if removeNewVersionNotif else 'false',
         "compname": compname,
         "androidappid":androidappid,
-        "filename":filename
+        "filename":filename,
+        "brands_json": json.dumps(brand_manifest, ensure_ascii=True, separators=(',', ':'))
     }
 
     temp_json_path = f"data_{uuid.uuid4()}.json"
@@ -285,7 +367,10 @@ def generate_custom_client(params, full_url):
     with pyzipper.AESZipFile(zip_path, 'w', compression=pyzipper.ZIP_LZMA, encryption=pyzipper.WZ_AES) as zf:
         zf.setpassword(_settings.ZIP_PASSWORD.encode())
         zf.write(temp_json_path, arcname="secrets.json")
-        for asset_name in ("icon.png", "logo.png", "privacy.png"):
+        asset_names = {"icon.png", "logo.png", "privacy.png"}
+        for brand in brand_manifest:
+            asset_names.update(name for name in (brand['icon'], brand['logo']) if name)
+        for asset_name in sorted(asset_names):
             asset_path = Path("png") / myuuid / asset_name
             if asset_path.is_file():
                 zf.write(asset_path, arcname=f"assets/{asset_name}")
@@ -396,18 +481,24 @@ def generator_view(request):
         form = GenerateForm(request.POST, request.FILES)
         if form.is_valid():
             params = form.cleaned_data
-            full_url = f"{_settings.PROTOCOL}://{request.get_host()}" if _settings.GENURL else f"{_settings.PROTOCOL}://{request.get_host()}"
-            result = generate_custom_client(params, full_url)
-            if result['success']:
-                return render(request, 'waiting.html', {
-                    'filename': result['filename'],
-                    'uuid': result['uuid'],
-                    'status': "Starting generator...please wait",
-                    'platform': result['platform'],
-                    'log_url': result['log_url']
-                })
+            try:
+                params['extra_brands'] = _collect_extra_brands(request)
+                _sanitize_output_name(params.get('exename'))
+            except ValueError as error:
+                form.add_error(None, str(error))
             else:
-                return JsonResponse({"error": result['error']}, status=result.get('status_code', 500))
+                full_url = f"{_settings.PROTOCOL}://{request.get_host()}"
+                result = generate_custom_client(params, full_url)
+                if result['success']:
+                    return render(request, 'waiting.html', {
+                        'filename': result['filename'],
+                        'uuid': result['uuid'],
+                        'status': "Starting generator...please wait",
+                        'platform': result['platform'],
+                        'log_url': result['log_url']
+                    })
+                else:
+                    return JsonResponse({"error": result['error']}, status=result.get('status_code', 500))
     else:
         form = GenerateForm()
     #return render(request, 'maintenance.html')
@@ -432,8 +523,7 @@ def check_for_file(request):
         available_files = sorted(
             path.name for path in result_dir.iterdir()
             if path.is_file()
-            and path.name.startswith(f'{filename}-')
-            and path.suffix.lower() in ('.exe', '.msi')
+            and path.suffix.lower() in ('.exe', '.msi', '.dmg')
         )
 
     if gh_run.status == "success":

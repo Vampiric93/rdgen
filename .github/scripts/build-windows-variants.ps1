@@ -51,6 +51,7 @@ $fileName = $env:filename
 if ([string]::IsNullOrWhiteSpace($fileName)) {
     $fileName = 'rustdesk'
 }
+$directionSeparator = if ([string]::IsNullOrEmpty($env:RDGEN_DIRECTION_SEPARATOR)) { '-' } else { $env:RDGEN_DIRECTION_SEPARATOR }
 
 $originalExecutable = Join-Path $rustdeskDirectory 'rustdesk.exe'
 $applicationExecutable = Join-Path $rustdeskDirectory "$appName.exe"
@@ -148,7 +149,7 @@ foreach ($direction in $directions) {
     if (-not (Test-Path $portableOutput)) {
         throw "Portable EXE output was not created for $direction"
     }
-    Move-Item $portableOutput (Join-Path $signOutputDirectory "$fileName-$suffix.exe") -Force
+    Move-Item $portableOutput (Join-Path $signOutputDirectory "$fileName$directionSeparator$suffix.exe") -Force
 
     Push-Location $msiDirectory
     try {
@@ -159,7 +160,7 @@ foreach ($direction in $directions) {
         if (-not (Test-Path $msiOutput)) {
             throw "MSI output was not created for $direction"
         }
-        Copy-Item $msiOutput (Join-Path $signOutputDirectory "$fileName-$suffix.msi") -Force
+        Copy-Item $msiOutput (Join-Path $signOutputDirectory "$fileName$directionSeparator$suffix.msi") -Force
     }
     finally {
         Pop-Location
