@@ -9,7 +9,10 @@ $ErrorActionPreference = 'Continue'
 
 while ($true) {
     & ssh.exe `
+        -F NUL `
         -o BatchMode=yes `
+        -o IdentitiesOnly=yes `
+        -o IdentityAgent=none `
         -o ExitOnForwardFailure=yes `
         -o ConnectTimeout=10 `
         -o ServerAliveInterval=15 `

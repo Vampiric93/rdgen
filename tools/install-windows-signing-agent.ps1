@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$InstallDirectory = 'E:\андрей-файлы\работа\мегабайт\rustdesk\custom client\signer',
     [string]$RemoteHost = '10.101.28.33',
     [string]$RemoteUser = 'agent'
@@ -38,6 +38,11 @@ $apiKeyFile = Join-Path $InstallDirectory 'api-key.dpapi'
 $sshKeyPath = Join-Path $InstallDirectory 'rdgen-signer-ed25519'
 
 New-Item -ItemType Directory -Path $InstallDirectory -Force | Out-Null
+$currentUserSid = $identity.User.Value
+& icacls.exe $InstallDirectory /inheritance:r /grant:r "*$($currentUserSid):(OI)(CI)F" '*S-1-5-18:(OI)(CI)F' | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    throw 'Could not secure the local signer directory ACL'
+}
 
 if (-not (Test-Path -LiteralPath $signToolPath -PathType Leaf)) {
     throw "SignTool not found: $signToolPath"
@@ -84,16 +89,19 @@ if (Test-Path -LiteralPath $apiKeyFile -PathType Leaf) {
 }
 
 $target = "$RemoteUser@$RemoteHost"
-& ssh.exe -i $sshKeyPath -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new $target 'cmd /c exit 0' 2>$null
+& ssh.exe -F NUL -i $sshKeyPath -o BatchMode=yes -o IdentitiesOnly=yes -o IdentityAgent=none -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new $target 'key-test' 2>$null
 $keyInstalled = $LASTEXITCODE -eq 0
 
 if (-not $keyInstalled) {
     Write-Host ''
     Write-Host "Enter the password for $target once. It will not be saved." -ForegroundColor Yellow
-    $installPublicKeyCommand = @'
+    $bootstrapCommand = @'
 $ErrorActionPreference = 'Stop'
-$key = [Console]::In.ReadToEnd().Trim()
+$payload = [Console]::In.ReadToEnd() | ConvertFrom-Json
+$key = [string]$payload.publicKey
+$apiKey = [string]$payload.apiKey
 if ([string]::IsNullOrWhiteSpace($key) -or -not $key.StartsWith('ssh-ed25519 ')) { throw 'Invalid SSH public key' }
+if ([string]::IsNullOrWhiteSpace($apiKey)) { throw 'Empty signing API key' }
 $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $currentPrincipal = [Security.Principal.WindowsPrincipal]::new($currentIdentity)
 $administratorsSid = [Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')
@@ -105,8 +113,11 @@ if ($currentPrincipal.IsInRole($administratorsSid)) {
     $authorizedKeys = Join-Path $sshDirectory 'authorized_keys'
 }
 New-Item -ItemType Directory -Path $sshDirectory -Force | Out-Null
+$keyBlob = $key.Split(' ')[1]
 $existingKeys = if (Test-Path $authorizedKeys) { @(Get-Content $authorizedKeys) } else { @() }
-if ($key -notin $existingKeys) { [IO.File]::AppendAllText($authorizedKeys, $key + [Environment]::NewLine, [Text.Encoding]::ASCII) }
+$existingKeys = @($existingKeys | Where-Object { $_ -notmatch [regex]::Escape($keyBlob) })
+$restrictedKey = 'command="cmd /c exit 0",restrict,port-forwarding,permitlisten="127.0.0.1:19000" ' + $key
+[IO.File]::WriteAllLines($authorizedKeys, @($existingKeys + $restrictedKey), [Text.Encoding]::ASCII)
 if ($currentPrincipal.IsInRole($administratorsSid)) {
     & icacls.exe $authorizedKeys /inheritance:r /grant:r '*S-1-5-18:F' '*S-1-5-32-544:F' | Out-Null
 } else {
@@ -114,38 +125,31 @@ if ($currentPrincipal.IsInRole($administratorsSid)) {
     & icacls.exe $authorizedKeys /inheritance:r /grant:r "*$($userSid):F" '*S-1-5-18:F' | Out-Null
 }
 if ($LASTEXITCODE -ne 0) { throw 'Could not secure the SSH directory ACL' }
-'SSH key installed'
+
+$signingDirectory = 'C:\rdgen-signing'
+$apiKeyPath = Join-Path $signingDirectory 'api-key.txt'
+New-Item -ItemType Directory -Path $signingDirectory -Force | Out-Null
+[IO.File]::WriteAllText($apiKeyPath, $apiKey, [Text.UTF8Encoding]::new($false))
+$userSid = $currentIdentity.User.Value
+& icacls.exe $signingDirectory /inheritance:r /grant:r "*$($userSid):(OI)(CI)F" '*S-1-5-18:(OI)(CI)F' '*S-1-5-20:(OI)(CI)R' | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'Could not secure the signing configuration ACL' }
+'Signing bridge bootstrapped'
 '@
-    $encodedCommand = ConvertTo-EncodedCommand $installPublicKeyCommand
-    Get-Content -LiteralPath "$sshKeyPath.pub" -Raw |
+    $encodedCommand = ConvertTo-EncodedCommand $bootstrapCommand
+    $bootstrapPayload = @{
+        publicKey = (Get-Content -LiteralPath "$sshKeyPath.pub" -Raw).Trim()
+        apiKey = $apiKey
+    } | ConvertTo-Json -Compress
+    $bootstrapPayload |
         & ssh.exe -o StrictHostKeyChecking=accept-new $target powershell.exe -NoProfile -EncodedCommand $encodedCommand
     if ($LASTEXITCODE -ne 0) {
-        throw 'Could not install the SSH public key on the server'
+        throw 'Could not bootstrap the signing bridge on the server'
     }
 }
 
-& ssh.exe -i $sshKeyPath -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new $target 'cmd /c exit 0'
+& ssh.exe -F NUL -i $sshKeyPath -o BatchMode=yes -o IdentitiesOnly=yes -o IdentityAgent=none -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new $target 'key-test'
 if ($LASTEXITCODE -ne 0) {
     throw 'SSH key authentication test failed'
-}
-
-$storeApiKeyCommand = @'
-$ErrorActionPreference = 'Stop'
-$apiKey = [Console]::In.ReadToEnd().Trim()
-if ([string]::IsNullOrWhiteSpace($apiKey)) { throw 'Empty signing API key' }
-$directory = 'C:\rdgen-signing'
-$path = Join-Path $directory 'api-key.txt'
-New-Item -ItemType Directory -Path $directory -Force | Out-Null
-[IO.File]::WriteAllText($path, $apiKey, [Text.UTF8Encoding]::new($false))
-$userSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-& icacls.exe $directory /inheritance:r /grant:r "*$($userSid):(OI)(CI)F" '*S-1-5-18:(OI)(CI)F' '*S-1-5-20:(OI)(CI)R' | Out-Null
-if ($LASTEXITCODE -ne 0) { throw 'Could not secure the signing configuration ACL' }
-'Signing configuration installed'
-'@
-$encodedCommand = ConvertTo-EncodedCommand $storeApiKeyCommand
-$apiKey | & ssh.exe -i $sshKeyPath -o BatchMode=yes $target powershell.exe -NoProfile -EncodedCommand $encodedCommand
-if ($LASTEXITCODE -ne 0) {
-    throw 'Could not store signing configuration on the server'
 }
 
 & netsh.exe http delete urlacl url=http://127.0.0.1:9000/ 2>$null | Out-Null

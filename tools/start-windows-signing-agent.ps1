@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$InstallDirectory = 'E:\андрей-файлы\работа\мегабайт\rustdesk\custom client\signer',
     [string]$RemoteHost = '10.101.28.33',
     [string]$RemoteUser = 'agent'
