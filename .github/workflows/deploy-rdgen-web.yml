@@ -25,6 +25,11 @@ jobs:
       - name: Update running RDGen service
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+          trap {
+            Write-Output "::error title=RDGen deployment failed::$($_.Exception.Message)"
+            exit 1
+          }
           $dockerCommand = Get-Command docker.exe -ErrorAction SilentlyContinue
           $docker = if ($dockerCommand) { $dockerCommand.Source } else { 'C:\Program Files\Docker\Docker\resources\bin\docker.exe' }
           if (Test-Path -LiteralPath $docker -PathType Leaf) {
