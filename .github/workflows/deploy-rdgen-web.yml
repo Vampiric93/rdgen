@@ -25,17 +25,27 @@ jobs:
       - name: Update running RDGen container
         shell: pwsh
         run: |
-          $containers = @(docker ps --filter 'publish=8000' --format '{{.ID}}')
-          if ($LASTEXITCODE -ne 0) { throw 'Docker is not available to the runner service.' }
+          $dockerCommand = Get-Command docker.exe -ErrorAction SilentlyContinue
+          $docker = if ($dockerCommand) { $dockerCommand.Source } else { 'C:\Program Files\Docker\Docker\resources\bin\docker.exe' }
+          if (-not (Test-Path -LiteralPath $docker -PathType Leaf)) {
+            Write-Output '::error::docker.exe was not found for the runner service.'
+            throw 'Docker is not available to the runner service.'
+          }
+          $containers = @(& $docker ps --filter 'publish=8000' --format '{{.ID}}')
+          if ($LASTEXITCODE -ne 0) {
+            Write-Output '::error::docker.exe exists but the runner service cannot access the Docker engine.'
+            throw 'Docker is not available to the runner service.'
+          }
           if ($containers.Count -ne 1) {
+            Write-Output "::error::Expected one container publishing port 8000, found $($containers.Count)."
             throw "Expected one running container publishing port 8000, found $($containers.Count)."
           }
           $container = $containers[0]
-          docker cp ./rdgenerator "$container`:/opt/rdgen/"
+          & $docker cp ./rdgenerator "$container`:/opt/rdgen/"
           if ($LASTEXITCODE -ne 0) { throw 'Could not update rdgenerator in the container.' }
-          docker cp ./rdgen "$container`:/opt/rdgen/"
+          & $docker cp ./rdgen "$container`:/opt/rdgen/"
           if ($LASTEXITCODE -ne 0) { throw 'Could not update Django project files in the container.' }
-          docker restart $container
+          & $docker restart $container
           if ($LASTEXITCODE -ne 0) { throw 'Could not restart the RDGen container.' }
 
       - name: Verify generator health
