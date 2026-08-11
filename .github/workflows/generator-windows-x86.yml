@@ -389,7 +389,7 @@ jobs:
         id: build
         shell: bash
         run: |
-          python3 res/inline-sciter.py
+          python res/inline-sciter.py
           # Patch sciter x86
           sed -i 's/branch = "dyn"/branch = "dyn_x86"/g' ./Cargo.toml
           cargo build --features inline,vram,hwcodec --release --bins
