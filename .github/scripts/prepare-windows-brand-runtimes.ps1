@@ -8,7 +8,9 @@ Set-StrictMode -Version Latest
 $repositoryRoot = (Get-Location).Path
 $sourceRuntime = Join-Path $repositoryRoot $RuntimeDirectory
 $brandRoot = Join-Path $repositoryRoot '.rdgen-brands'
+$signingRoot = Join-Path $repositoryRoot '.rdgen-signing-input'
 $manifestPath = Join-Path $env:RUNNER_TEMP 'rdgen-windows-brands.json'
+$signingMapPath = Join-Path $env:RUNNER_TEMP 'rdgen-windows-signing-map.json'
 $assetsDirectory = $env:RDGEN_ASSETS_DIR
 $appName = if ([string]::IsNullOrWhiteSpace($env:appname)) { 'rustdesk' } else { $env:appname }
 
@@ -28,6 +30,10 @@ if (Test-Path -LiteralPath $brandRoot) {
     Remove-Item -LiteralPath $brandRoot -Recurse -Force
 }
 New-Item -ItemType Directory -Path $brandRoot -Force | Out-Null
+if (Test-Path -LiteralPath $signingRoot) {
+    Remove-Item -LiteralPath $signingRoot -Recurse -Force
+}
+New-Item -ItemType Directory -Path $signingRoot -Force | Out-Null
 
 $requiresIconPatching = @($brands | Select-Object -Skip 1 | Where-Object { $_.icon }).Count -gt 0
 $rcEditPath = Join-Path $env:RUNNER_TEMP 'rcedit-x64-v2.0.0.exe'
@@ -95,4 +101,36 @@ for ($index = 0; $index -lt $brands.Count; $index++) {
 }
 
 $prepared | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
-Write-Host "Prepared $($prepared.Count) branded runtime(s)."
+
+# Sign each distinct binary only once. The map is later used to copy the
+# signed representative back over every byte-identical occurrence.
+$recordsByHash = @{}
+$signingRecords = [Collections.Generic.List[object]]::new()
+for ($index = 0; $index -lt $prepared.Count; $index++) {
+    $runtime = [string]$prepared[$index].runtime
+    $files = @(Get-ChildItem -LiteralPath $runtime -Recurse -File | Where-Object { $_.Extension -in '.exe', '.dll' })
+    foreach ($file in $files) {
+        $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
+        if ($recordsByHash.ContainsKey($hash)) {
+            $recordsByHash[$hash].destinations.Add($file.FullName)
+            continue
+        }
+
+        $relative = [IO.Path]::GetRelativePath($runtime, $file.FullName)
+        $destination = Join-Path (Join-Path $signingRoot $index) $relative
+        New-Item -ItemType Directory -Path (Split-Path $destination) -Force | Out-Null
+        Copy-Item -LiteralPath $file.FullName -Destination $destination -Force
+
+        $record = [pscustomobject]@{
+            source = $file.FullName
+            destinations = [Collections.Generic.List[string]]::new()
+        }
+        $record.destinations.Add($file.FullName)
+        $recordsByHash[$hash] = $record
+        $signingRecords.Add($record)
+    }
+}
+
+$signingRecords | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $signingMapPath -Encoding UTF8
+$signingCount = @(Get-ChildItem -LiteralPath $signingRoot -Recurse -File).Count
+Write-Host "Prepared $($prepared.Count) branded runtime(s) and $signingCount unique signing inputs."

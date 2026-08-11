@@ -111,6 +111,19 @@ function Clear-GeneratedMsiSection {
     [IO.File]::WriteAllText($path, $cleaned, [Text.UTF8Encoding]::new($false))
 }
 
+function Enable-UnicodeMsi {
+    $packagePath = Join-Path $msiDirectory 'Package\Package.wxs'
+    $content = [IO.File]::ReadAllText($packagePath)
+    if ($content -notmatch '<Package\s+Codepage=') {
+        $content = $content.Replace('<Package Name=', '<Package Codepage="65001" Name=')
+    }
+    $content = $content.Replace('Codepage="!(loc.SummaryCodepage)"', 'Codepage="1251"')
+    if ($content -notmatch '<Package\s+Codepage="65001"' -or $content -notmatch '<SummaryInformation[^>]+Codepage="1251"') {
+        throw 'Could not enable Unicode MSI metadata.'
+    }
+    [IO.File]::WriteAllText($packagePath, $content, [Text.UTF8Encoding]::new($false))
+}
+
 Enable-X86MsiBuild
 if ($PatchMsiOnly) {
     Write-Host 'MSI projects are configured for x86.'
@@ -178,6 +191,7 @@ if ([string]::IsNullOrWhiteSpace($initialCustomConfig)) {
 
 Push-Location $msiDirectory
 try {
+    Enable-UnicodeMsi
     Clear-GeneratedMsiSection 'Package\Components\RustDesk.wxs' '<!--$AutoComonentStart$-->' '<!--$AutoComponentEnd$-->'
     Clear-GeneratedMsiSection 'Package\Includes.wxi' '<!--$PreVarsStart$-->' '<!--$PreVarsEnd$-->'
     Clear-GeneratedMsiSection 'Package\Fragments\Upgrades.wxs' '<!--$UpgradeStart$-->' '<!--$UpgradeEnd$-->'
@@ -186,7 +200,10 @@ try {
     Clear-GeneratedMsiSection 'Package\Components\Regs.wxs' '<!--$ArpStart$-->' '<!--$ArpEnd$-->'
     Clear-GeneratedMsiSection 'Package\Fragments\AddRemoveProperties.wxs' '<!--$CustomClientPropsStart$-->' '<!--$CustomClientPropsEnd$-->'
 
-    python preprocess.py --app-name $msiAppName --arp -d ../../Release
+    $msiManufacturer = $env:compname
+    if ([string]::IsNullOrWhiteSpace($msiManufacturer)) { $msiManufacturer = 'Purslane Ltd' }
+    $msiManufacturer = $msiManufacturer.Replace('&', '&amp;').Replace('"', '&quot;').Replace('<', '&lt;').Replace('>', '&gt;').Replace("'", '&apos;')
+    python preprocess.py --app-name $msiAppName --arp --manufacturer $msiManufacturer -d ../../Release
     if ($LASTEXITCODE -ne 0) { throw 'MSI preprocessing failed' }
 }
 finally {

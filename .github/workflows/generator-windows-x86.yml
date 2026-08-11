@@ -90,6 +90,7 @@ jobs:
           Copy-Item ./.github/scripts/build-windows-x86-variants.ps1 "$env:RUNNER_TEMP/build-windows-x86-variants.ps1" -Force
           Copy-Item ./.github/scripts/build-windows-brand-batch.ps1 "$env:RUNNER_TEMP/build-windows-brand-batch.ps1" -Force
           Copy-Item ./.github/scripts/prepare-windows-brand-runtimes.ps1 "$env:RUNNER_TEMP/prepare-windows-brand-runtimes.ps1" -Force
+          Copy-Item ./.github/scripts/finalize-windows-brand-runtimes.ps1 "$env:RUNNER_TEMP/finalize-windows-brand-runtimes.ps1" -Force
           Copy-Item ./.github/scripts/apply-client-branding.py "$env:RUNNER_TEMP/apply-client-branding.py" -Force
         
       - uses: actions/download-artifact@v4
@@ -433,7 +434,7 @@ jobs:
       - name: zip dlls
         shell: pwsh
         run: |
-          Compress-Archive -Path ./.rdgen-brands/* -DestinationPath ./unsigned-runtime-files.zip -CompressionLevel Fastest
+          Compress-Archive -Path ./.rdgen-signing-input/* -DestinationPath ./unsigned-runtime-files.zip -CompressionLevel Fastest
 
       - name: sign dlls
         shell: bash
@@ -452,9 +453,10 @@ jobs:
       - name: unzip dlls
         shell: pwsh
         run: |
-          Remove-Item ./.rdgen-brands -Recurse -Force
           Expand-Archive -Path ./signed-runtime-files.zip -DestinationPath ./.rdgen-brands -Force
           Remove-Item ./unsigned-runtime-files.zip, ./signed-runtime-files.zip
+          Remove-Item ./.rdgen-signing-input -Recurse -Force
+          & "$env:RUNNER_TEMP/finalize-windows-brand-runtimes.ps1"
 
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2

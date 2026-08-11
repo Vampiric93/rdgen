@@ -54,7 +54,9 @@ runs:
                 extracted_assets[env_name] = destination
             extracted_assets['RDGEN_ASSETS_DIR'] = assets_dir
 
-        with open(os.environ['GITHUB_ENV'], 'a') as env_file:
+        # GitHub environment files are always UTF-8. Relying on the Windows
+        # locale here corrupts Cyrillic before the next workflow step reads it.
+        with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8', newline='') as env_file:
             for key, value in secrets.items():
                 if value:
                     print(f"::add-mask::{value}")
