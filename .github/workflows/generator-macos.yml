@@ -41,7 +41,7 @@ env:
 
 jobs:
   setup:
-    uses: ./.github/workflows/fetch-encrypted-secrets.yml
+    uses: ./.github/workflows/fetch-encrypted-secrets-selfhosted.yml
     with:
       zip_url_json: ${{ inputs.zip_url }}
 
