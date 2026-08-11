@@ -26,7 +26,11 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          $serviceToRecover = $null
           trap {
+            if ($serviceToRecover) {
+              Start-Service -Name $serviceToRecover -ErrorAction SilentlyContinue
+            }
             Write-Output "::error title=RDGen deployment failed::$($_.Exception.Message)"
             exit 1
           }
@@ -81,9 +85,15 @@ jobs:
             throw 'Could not locate the live RDGen directory.'
           }
 
+          $serviceToRecover = $service.Name
+          Stop-Service -Name $service.Name -Force
+          $runnerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+          & icacls.exe $appRoot /grant "*$($runnerSid):(OI)(CI)M" /T /C | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "Could not grant deployment access to $appRoot." }
           Copy-Item ./rdgenerator/* (Join-Path $appRoot 'rdgenerator') -Recurse -Force
           Copy-Item ./rdgen/* (Join-Path $appRoot 'rdgen') -Recurse -Force
-          Restart-Service -Name $service.Name -Force
+          Start-Service -Name $service.Name
+          $serviceToRecover = $null
           Write-Host "Updated $appRoot and restarted $($service.Name)."
 
       - name: Verify generator health
