@@ -57,7 +57,7 @@ jobs:
     uses: ./.github/workflows/third-party-RustDeskTempTopMostWindow.yml
     with:
       upload-artifact: true
-      target: windows-2022
+      target: self-hosted
       configuration: Release
       platform: x64
       target_version: Windows10

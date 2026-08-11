@@ -78,7 +78,11 @@ jobs:
           command: |
             cd RustDeskTempTopMostWindow && git checkout 53b548a5398624f7149a382000397993542ad796
             if ($env:privacylink_url-ne "false") {
-              Invoke-WebRequest -Uri ${{ env.privacylink_url }}/get_png?filename=${{ env.privacylink_file }}"&"uuid=${{ env.privacylink_uuid }} -OutFile privacy.png
+              if (-not (Test-Path -LiteralPath $env:RDGEN_PRIVACY_PATH -PathType Leaf)) {
+                throw 'Custom privacy image was not found in the encrypted build input'
+              }
+              Copy-Item -LiteralPath $env:RDGEN_PRIVACY_PATH -Destination privacy.png -Force
+              python -m pip install --disable-pip-version-check pillow
               Invoke-WebRequest -Uri https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/privacyScreen.py -OutFile privacyScreen.py
               python privacyScreen.py
               rm ./WindowInjection/img.cpp

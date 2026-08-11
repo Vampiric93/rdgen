@@ -89,16 +89,6 @@ jobs:
         with:
           zip_password: ${{ secrets.ZIP_PASSWORD }}
 
-      - name: Finalize and Cleanup zip/json
-        if: always() # Run even if previous steps fail
-        continue-on-error: true
-        uses: fjogeleit/http-request-action@v1
-        with:
-          url: "${{ secrets.GENURL }}/cleanzip"
-          method: 'POST'
-          customHeaders: '{"Content-Type": "application/json"}'
-          data: '{"uuid": "${{ env.uuid }}"}'
-
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@v6
         with:
@@ -290,11 +280,11 @@ jobs:
           mkdir -p ./macos/Runner/Assets.xcassets/AppIcon.appiconset
           mkdir -p ./rustdesk/data/flutter_assets/assets
 
-          # Download icon using curl with additional SSL options
-          curl -k -L --tlsv1.2 --proto =https --ssl-reqd \
-            -H "User-Agent: Mozilla/5.0" \
-            "${{ env.iconlink_url }}/get_png?filename=${{ env.iconlink_file }}&uuid=${{ env.iconlink_uuid }}" \
-            -o ./res/icon.png || wget --no-check-certificate -O ./res/icon.png "${{ env.iconlink_url }}/get_png?filename=${{ env.iconlink_file }}&uuid=${{ env.iconlink_uuid }}"
+          if [ ! -f "${RDGEN_ICON_PATH:-}" ]; then
+            echo "Custom icon was not found in the encrypted build input"
+            exit 1
+          fi
+          cp "$RDGEN_ICON_PATH" ./res/icon.png
             
           # Backup existing files (if they exist)
           [ -f "./res/32x32.png" ] && mv ./res/32x32.png ./res/32x32.png.bak
@@ -480,10 +470,6 @@ jobs:
           fi
           head -n 100 "${VCPKG_ROOT}/buildtrees/ffmpeg/build-${{ matrix.job.vcpkg-triplet }}-rel-out.log" || true
 
-      - name: Create MacOS directory structure
-        run: |
-          mkdir -p ./build/macos/Build/Products/Release/RustDesk.app/Contents/MacOS
-
       - name: Build rustdesk
         run: |
           if [ "${{ matrix.job.target }}" = "aarch64-apple-darwin" ]; then
@@ -495,20 +481,6 @@ jobs:
           fi
           sed -i -e "s/RustDesk.app/\"${{ env.appname }}.app\"/" build.py
           ./build.py --flutter --hwcodec --unix-file-copy-paste ${{ matrix.job.extra-build-args }}
-
-      # - name: Copy service file
-      #   run: |
-      #     cp -rf ../target/release/service ./build/macos/Build/Products/Release/RustDesk.app/Contents/MacOS/
-      
-      - name: Install rcodesign tool
-        if: env.MACOS_P12_BASE64 != null
-        shell: bash
-        run: |
-          pushd /tmp
-          wget https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F0.22.0/apple-codesign-0.22.0-macos-universal.tar.gz
-          tar -zxvf apple-codesign-0.22.0-macos-universal.tar.gz
-          mv apple-codesign-0.22.0-macos-universal/rcodesign /usr/local/bin
-          popd
 
       - name: Install build runtime
         run: |
@@ -535,7 +507,12 @@ jobs:
         continue-on-error: false
         shell: bash
         run: |
-          ASSETS_DIR="build/macos/Build/Products/Release/RustDesk.app/Contents/Frameworks/App.framework/Versions/Current/Resources/flutter_assets/assets"
+          APP_BUNDLE=$(find flutter/build/macos/Build/Products/Release -maxdepth 1 -type d -name '*.app' | head -n 1)
+          if [ -z "$APP_BUNDLE" ]; then
+            echo "Built app bundle was not found"
+            exit 1
+          fi
+          ASSETS_DIR="$APP_BUNDLE/Contents/Frameworks/App.framework/Versions/Current/Resources/flutter_assets/assets"
           mkdir -p "$ASSETS_DIR"
           if [ -f "$ASSETS_DIR/icon.svg" ]; then
             mv "$ASSETS_DIR/icon.svg" "$ASSETS_DIR/icon.svg.bak"
@@ -551,73 +528,62 @@ jobs:
         continue-on-error: false
         shell: bash
         run: |
-          ASSETS_DIR="build/macos/Build/Products/Release/RustDesk.app/Contents/Frameworks/App.framework/Versions/Current/Resources/flutter_assets/assets"
+          APP_BUNDLE=$(find flutter/build/macos/Build/Products/Release -maxdepth 1 -type d -name '*.app' | head -n 1)
+          if [ -z "$APP_BUNDLE" ]; then
+            echo "Built app bundle was not found"
+            exit 1
+          fi
+          ASSETS_DIR="$APP_BUNDLE/Contents/Frameworks/App.framework/Versions/Current/Resources/flutter_assets/assets"
           mkdir -p "$ASSETS_DIR"
-          curl -k -L --tlsv1.2 --proto =https --ssl-reqd \
-            -H "User-Agent: Mozilla/5.0" \
-            "${{ env.logolink_url }}/get_png?filename=${{ env.logolink_file }}&uuid=${{ env.logolink_uuid }}" \
-            -o "$ASSETS_DIR/logo.png" || \
-          wget --no-check-certificate \
-            -O "$ASSETS_DIR/logo.png" \
-            "${{ env.logolink_url }}/get_png?filename=${{ env.logolink_file }}&uuid=${{ env.logolink_uuid }}"
+          if [ ! -f "${RDGEN_LOGO_PATH:-}" ]; then
+            echo "Custom logo was not found in the encrypted build input"
+            exit 1
+          fi
+          cp "$RDGEN_LOGO_PATH" "$ASSETS_DIR/logo.png"
 
       - name: Sign macOS app bundle
         if: env.MACOS_P12_BASE64 != ''
+        shell: bash
+        env:
+          P12_PASSWORD: ${{ secrets.MACOS_P12_PASSWORD }}
         run: |
-            cd flutter/build/macos/Build/Products/Release
-            # Debug info
-            echo "Current directory contents:"
-            ls -la
-            
-            # Rename RustDesk.app to the custom app name first
-            if [ -d "RustDesk.app" ]; then
-              # First rename the app if it's still called RustDesk.app
-              mv "RustDesk.app" "${{ env.appname }}.app"
-              echo "Renamed RustDesk.app to ${{ env.appname }}.app"
-            fi
-            
-            echo "App bundle contents after rename:"
-            ls -la "${{ env.appname }}.app" || echo "App not found"
-            ls -la "${{ env.appname }}.app/Contents" || echo "Contents not found"
-            
-            # Decode the certificate
-            echo "${{ secrets.MACOS_P12_BASE64 }}" | base64 --decode > certificate.p12
-            
-            # Sign the app bundle and its contents
-            if [ -d "${{ env.appname }}.app/Contents/MacOS" ]; then
-              echo "Signing main executable..."
-              MAIN_EXECUTABLE="${{ env.appname }}.app/Contents/MacOS/${{ env.appname }}"
-              if [ -f "$MAIN_EXECUTABLE" ]; then
-                rcodesign sign --p12-file certificate.p12 --p12-password "${{ secrets.MACOS_P12_PASSWORD }}" \
-                  --code-signature-flags runtime "$MAIN_EXECUTABLE"
-              else
-                echo "Main executable not found at expected path: $MAIN_EXECUTABLE"
-                # Try to find the actual executable
-                echo "Available executables in MacOS directory:"
-                ls -la "${{ env.appname }}.app/Contents/MacOS/"
-                ACTUAL_EXECUTABLE=$(ls "${{ env.appname }}.app/Contents/MacOS/" | head -n 1)
-                if [ -n "$ACTUAL_EXECUTABLE" ]; then
-                  echo "Found executable: $ACTUAL_EXECUTABLE"
-                  rcodesign sign --p12-file certificate.p12 --p12-password "${{ secrets.MACOS_P12_PASSWORD }}" \
-                    --code-signature-flags runtime "${{ env.appname }}.app/Contents/MacOS/$ACTUAL_EXECUTABLE"
-                fi
-              fi
-              
-              echo "Signing frameworks..."
-              find "${{ env.appname }}.app/Contents/Frameworks" -type f -not -name ".*" -exec \
-                rcodesign sign --p12-file certificate.p12 --p12-password "${{ secrets.MACOS_P12_PASSWORD }}" \
-                --code-signature-flags runtime {} \;
-              
-              echo "Signing main bundle..."
-              rcodesign sign --p12-file certificate.p12 --p12-password "${{ secrets.MACOS_P12_PASSWORD }}" \
-                --code-signature-flags runtime "${{ env.appname }}.app"
-            else
-              echo "Error: Invalid app bundle structure"
-              exit 1
-            fi
-            
-            # Clean up
-            rm certificate.p12 
+          cd flutter/build/macos/Build/Products/Release
+          if [ -d "RustDesk.app" ]; then
+            mv "RustDesk.app" "${{ env.appname }}.app"
+          fi
+
+          TARGET_APP="${{ env.appname }}.app"
+          if [ ! -d "$TARGET_APP/Contents/MacOS" ]; then
+            echo "Invalid app bundle: $TARGET_APP"
+            exit 1
+          fi
+
+          CERT_PATH="$RUNNER_TEMP/rdgen-signing.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/rdgen-signing.keychain-db"
+          KEYCHAIN_PASSWORD=$(uuidgen)
+          cleanup_signing() {
+            rm -f "$CERT_PATH"
+            security delete-keychain "$KEYCHAIN_PATH" >/dev/null 2>&1 || true
+          }
+          trap cleanup_signing EXIT
+
+          printf '%s' "$MACOS_P12_BASE64" | base64 -D > "$CERT_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" -P "$P12_PASSWORD" -A -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk '/Developer ID Application/ {print $2; exit}')
+          if [ -z "$IDENTITY" ]; then
+            echo "Developer ID Application identity was not found in the P12"
+            exit 1
+          fi
+
+          xattr -cr "$TARGET_APP" || true
+          codesign --force --deep --options runtime --timestamp --sign "$IDENTITY" "$TARGET_APP"
+          codesign --verify --deep --strict --verbose=2 "$TARGET_APP"
 
       - name: Ad-hoc Sign macOS app bundle (Fallback)
         if: env.MACOS_P12_BASE64 == '' || env.MACOS_P12_BASE64 == null
@@ -692,17 +658,34 @@ jobs:
             exit 1
           fi
 
-      - name: send file to rdgen server
+      - name: Encrypt DMG for local publisher
         if: ${{ env.rdgen == 'true' }}
-        shell: bash
+        shell: python
+        env:
+          OUTPUT_ZIP_PASSWORD: ${{ secrets.ZIP_PASSWORD }}
+          DMG_PATH: ${{ github.workspace }}/${{ env.filename }}-${{ matrix.job.arch }}.dmg
+          OUTPUT_ZIP: ${{ github.workspace }}/macos-output-${{ matrix.job.arch }}.zip
         run: |
-          curl -i -X POST \
-            -H "Content-Type: multipart/form-data" \
-            -H "Authorization: Bearer ${{ env.token }}" \
-            -F "file=@$GITHUB_WORKSPACE/${{ env.filename }}-${{ matrix.job.arch }}.dmg" \
-            -F "uuid=${{ env.uuid }}" \
-            "${{ secrets.GENURL }}/save_custom_client"
-        
+          import os
+          import pyzipper
+
+          dmg_path = os.environ['DMG_PATH']
+          output_zip = os.environ['OUTPUT_ZIP']
+          password = os.environ['OUTPUT_ZIP_PASSWORD'].encode()
+          if not os.path.isfile(dmg_path):
+              raise FileNotFoundError(dmg_path)
+
+          with pyzipper.AESZipFile(output_zip, 'w', compression=pyzipper.ZIP_DEFLATED, encryption=pyzipper.WZ_AES) as archive:
+              archive.setpassword(password)
+              archive.write(dmg_path, arcname=os.path.basename(dmg_path))
+
+      - name: Upload encrypted DMG for local publisher
+        if: ${{ env.rdgen == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-output-${{ matrix.job.arch }}
+          path: ${{ github.workspace }}/macos-output-${{ matrix.job.arch }}.zip
+          retention-days: 1
 
       - name: send file to api server
         if: ${{ env.rdgen == 'false' }}
@@ -714,8 +697,88 @@ jobs:
             -F "file=@$GITHUB_WORKSPACE/${{ env.filename }}-${{ matrix.job.arch }}.dmg" \
             "${{ env.apiServer }}/api/save_custom_client"
 
+  publish-macos:
+    name: Publish macOS files to RDGen
+    needs: [build-for-macos, setup]
+    runs-on: self-hosted
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: encrypted-secrets-zip
+
+      - name: Load Secrets
+        uses: ./.github/actions/decrypt-secrets
+        with:
+          zip_password: ${{ secrets.ZIP_PASSWORD }}
+
+      - name: Download encrypted macOS outputs
+        if: env.rdgen == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: macos-output-*
+          path: ${{ runner.temp }}/rdgen-macos-zips
+          merge-multiple: true
+
+      - name: Decrypt macOS outputs
+        if: env.rdgen == 'true'
+        shell: python
+        env:
+          OUTPUT_ZIP_PASSWORD: ${{ secrets.ZIP_PASSWORD }}
+        run: |
+          import glob
+          import os
+          import pyzipper
+
+          zip_dir = os.path.join(os.environ['RUNNER_TEMP'], 'rdgen-macos-zips')
+          output_dir = os.path.join(os.environ['RUNNER_TEMP'], 'rdgen-macos-output')
+          os.makedirs(output_dir, exist_ok=True)
+          archives = glob.glob(os.path.join(zip_dir, '*.zip'))
+          if len(archives) != 2:
+              raise RuntimeError(f'Expected 2 encrypted macOS outputs, found {len(archives)}')
+
+          for archive_path in archives:
+              with pyzipper.AESZipFile(archive_path) as archive:
+                  archive.setpassword(os.environ['OUTPUT_ZIP_PASSWORD'].encode())
+                  dmg_names = [name for name in archive.namelist() if name.endswith('.dmg') and os.path.basename(name) == name]
+                  if len(dmg_names) != 1:
+                      raise RuntimeError(f'Expected one DMG in {archive_path}')
+                  with archive.open(dmg_names[0]) as source, open(os.path.join(output_dir, dmg_names[0]), 'wb') as output:
+                      output.write(source.read())
+
+      - name: Send macOS files to RDGen server
+        if: env.rdgen == 'true'
+        shell: bash
+        run: |
+          output_dir="${RUNNER_TEMP}/rdgen-macos-output"
+          shopt -s nullglob
+          files=("$output_dir"/*.dmg)
+          if [ "${#files[@]}" -ne 2 ]; then
+            echo "Expected 2 DMG files, found ${#files[@]}"
+            exit 1
+          fi
+          for artifact in "${files[@]}"; do
+            curl --fail-with-body -sS -X POST \
+              -H "Authorization: Bearer ${token}" \
+              -F "file=@${artifact}" \
+              -F "uuid=${uuid}" \
+              "${{ secrets.GENURL }}/save_custom_client"
+          done
+
+      - name: Finalize and Cleanup zip/json
+        if: always()
+        continue-on-error: true
+        uses: fjogeleit/http-request-action@v1
+        with:
+          url: "${{ secrets.GENURL }}/cleanzip"
+          method: 'POST'
+          customHeaders: '{"Content-Type": "application/json"}'
+          data: '{"uuid": "${{ env.uuid }}"}'
+
   cleanup:
-    needs: [build-for-macos]
+    needs: [build-for-macos, publish-macos]
     runs-on: ubuntu-latest
     continue-on-error: true
     if: always()
@@ -724,3 +787,8 @@ jobs:
         uses: geekyeggo/delete-artifact@v5
         with:
           name: encrypted-secrets-zip
+
+      - name: Delete encrypted macOS output artifacts
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: macos-output-*

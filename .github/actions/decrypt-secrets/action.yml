@@ -28,10 +28,30 @@ runs:
             with zf.open('secrets.json') as f:
                 secrets = json.load(f)
 
+            assets_dir = os.path.join(os.environ['RUNNER_TEMP'], 'rdgen-assets')
+            asset_env_names = {
+                'icon.png': 'RDGEN_ICON_PATH',
+                'logo.png': 'RDGEN_LOGO_PATH',
+                'privacy.png': 'RDGEN_PRIVACY_PATH',
+            }
+            archived_names = set(zf.namelist())
+            extracted_assets = {}
+            for asset_name, env_name in asset_env_names.items():
+                archive_name = f'assets/{asset_name}'
+                if archive_name not in archived_names:
+                    continue
+                os.makedirs(assets_dir, exist_ok=True)
+                destination = os.path.join(assets_dir, asset_name)
+                with zf.open(archive_name) as source, open(destination, 'wb') as output:
+                    output.write(source.read())
+                extracted_assets[env_name] = destination
+
         with open(os.environ['GITHUB_ENV'], 'a') as env_file:
             for key, value in secrets.items():
                 if value:
                     print(f"::add-mask::{value}")
                     env_file.write(f"{key}={value}\n")
+            for key, value in extracted_assets.items():
+                env_file.write(f"{key}={value}\n")
         
         print(f"Successfully masked {len(secrets)} secrets.")

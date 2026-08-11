@@ -275,7 +275,7 @@ def generate_custom_client(params, full_url):
     }
 
     temp_json_path = f"data_{uuid.uuid4()}.json"
-    zip_filename = f"secrets_{uuid.uuid4()}.zip"
+    zip_filename = f"secrets_{myuuid}.zip"
     zip_path = "temp_zips/%s" % (zip_filename)
     Path("temp_zips").mkdir(parents=True, exist_ok=True)
 
@@ -285,6 +285,10 @@ def generate_custom_client(params, full_url):
     with pyzipper.AESZipFile(zip_path, 'w', compression=pyzipper.ZIP_LZMA, encryption=pyzipper.WZ_AES) as zf:
         zf.setpassword(_settings.ZIP_PASSWORD.encode())
         zf.write(temp_json_path, arcname="secrets.json")
+        for asset_name in ("icon.png", "logo.png", "privacy.png"):
+            asset_path = Path("png") / myuuid / asset_name
+            if asset_path.is_file():
+                zf.write(asset_path, arcname=f"assets/{asset_name}")
 
     if os.path.exists(temp_json_path):
         os.remove(temp_json_path)
