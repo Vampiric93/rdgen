@@ -18,6 +18,9 @@ def replace_in_file(path: Path, company: str, quote: str) -> bool:
     text = path.read_text(encoding="utf-8")
     if quote == "double":
         replacement = company.replace("\\", "\\\\").replace('"', '\\"')
+    elif quote == "windows_rc":
+        # Resource Compiler strings escape literal quotes by doubling them.
+        replacement = company.replace('"', '""')
     elif quote == "single":
         replacement = company.replace("\\", "\\\\").replace("'", "\\'")
     else:
@@ -80,7 +83,6 @@ def main() -> None:
         "Cargo.toml",
         "libs/portable/Cargo.toml",
         "src/main.rs",
-        "flutter/windows/runner/Runner.rc",
         "res/msi/preprocess.py",
     )
     single_quoted_files = (
@@ -97,6 +99,9 @@ def main() -> None:
         path = root / relative_path
         if replace_in_file(path, company, "double"):
             changed_files.append(relative_path)
+    runner_rc = root / "flutter/windows/runner/Runner.rc"
+    if replace_in_file(runner_rc, company, "windows_rc"):
+        changed_files.append("flutter/windows/runner/Runner.rc")
     for relative_path in single_quoted_files:
         path = root / relative_path
         if replace_in_file(path, company, "single"):
