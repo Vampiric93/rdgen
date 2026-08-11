@@ -86,8 +86,10 @@ jobs:
           }
 
           $serviceToRecover = $service.Name
+          $runnerIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
+          Write-Output "::notice title=RDGen runner identity::$($runnerIdentity.Name) [$($runnerIdentity.User.Value)]"
           Stop-Service -Name $service.Name -Force
-          $runnerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+          $runnerSid = $runnerIdentity.User.Value
           & icacls.exe $appRoot /grant "*$($runnerSid):(OI)(CI)M" /T /C | Out-Null
           if ($LASTEXITCODE -ne 0) { throw "Could not grant deployment access to $appRoot." }
           Copy-Item ./rdgenerator/* (Join-Path $appRoot 'rdgenerator') -Recurse -Force
