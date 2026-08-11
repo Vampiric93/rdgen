@@ -1,12 +1,7 @@
 name: update docker image
 
 on:
-  push:
-    branches:
-      - dev
-      - master
-    tags:
-      - 'v*.*.*'
+  workflow_dispatch:
 
 jobs:
   build:

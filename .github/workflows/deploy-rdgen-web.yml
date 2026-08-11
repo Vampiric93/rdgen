@@ -1,0 +1,57 @@
+name: Deploy RDGen web interface
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'rdgenerator/**'
+      - 'rdgen/**'
+      - 'requirements.txt'
+      - '.github/workflows/deploy-rdgen-web.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: rdgen-web-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v5
+
+      - name: Update running RDGen container
+        shell: pwsh
+        run: |
+          $containers = @(docker ps --filter 'publish=8000' --format '{{.ID}}')
+          if ($LASTEXITCODE -ne 0) { throw 'Docker is not available to the runner service.' }
+          if ($containers.Count -ne 1) {
+            throw "Expected one running container publishing port 8000, found $($containers.Count)."
+          }
+          $container = $containers[0]
+          docker cp ./rdgenerator "$container`:/opt/rdgen/"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not update rdgenerator in the container.' }
+          docker cp ./rdgen "$container`:/opt/rdgen/"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not update Django project files in the container.' }
+          docker restart $container
+          if ($LASTEXITCODE -ne 0) { throw 'Could not restart the RDGen container.' }
+
+      - name: Verify generator health
+        shell: pwsh
+        run: |
+          $url = 'http://127.0.0.1:8000/generator'
+          for ($attempt = 1; $attempt -le 20; $attempt++) {
+            try {
+              $response = Invoke-WebRequest $url -UseBasicParsing -TimeoutSec 5
+              if ($response.StatusCode -eq 200 -and $response.Content -match 'Additional branded clients') {
+                Write-Host 'RDGen web interface is updated and healthy.'
+                exit 0
+              }
+            } catch {
+              Write-Host "Health check attempt $attempt failed."
+            }
+            Start-Sleep -Seconds 3
+          }
+          throw 'Updated RDGen interface did not become healthy.'
