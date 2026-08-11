@@ -88,7 +88,7 @@ jobs:
               rm ./WindowInjection/img.cpp
               mv img.cpp ./WindowInjection/img.cpp
             }
-            msbuild ${{ env.project_path }} -p:Configuration=${{ inputs.configuration }} -p:Platform=${{ inputs.platform }} /p:TargetVersion=${{ inputs.target_version }}
+            msbuild ${{ env.project_path }} -p:Configuration=${{ inputs.configuration }} -p:Platform=${{ inputs.platform }} /p:TargetVersion=${{ inputs.target_version }} -p:PlatformToolset=v143
 
       - name: Archive build artifacts
         uses: actions/upload-artifact@master
