@@ -32,7 +32,7 @@ function ConvertTo-EncodedCommand {
     return [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Command))
 }
 
-$rawBaseUrl = 'https://raw.githubusercontent.com/Vampiric93/rdgen/5f015b1/tools'
+$rawBaseUrl = 'https://raw.githubusercontent.com/Vampiric93/rdgen/0a9cdab/tools'
 $signToolPath = 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.19041.0\x64\signtool.exe'
 $apiKeyFile = Join-Path $InstallDirectory 'api-key.txt'
 $legacyApiKeyFile = Join-Path $InstallDirectory 'api-key.dpapi'
