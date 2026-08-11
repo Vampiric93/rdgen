@@ -136,17 +136,17 @@ try {
                 throw 'The archive contains no EXE, DLL, or MSI files'
             }
 
-            foreach ($file in $filesToSign) {
-                Write-Host "Signing $($file.Name)..."
-                & $SignToolPath sign /a /tr $TimestampUrl /sha1 $CertificateThumbprint /td SHA256 /fd SHA256 $file.FullName
-                if ($LASTEXITCODE -ne 0) {
-                    throw "SignTool failed for $($file.Name) with exit code $LASTEXITCODE"
-                }
+            $filePaths = @($filesToSign | ForEach-Object { $_.FullName })
+            Write-Host "Signing $($filePaths.Count) file(s) in one SignTool session..."
+            & $SignToolPath sign /a /tr $TimestampUrl /sha1 $CertificateThumbprint /td SHA256 /fd SHA256 @filePaths
+            if ($LASTEXITCODE -ne 0) {
+                throw "SignTool batch signing failed with exit code $LASTEXITCODE"
+            }
 
-                & $SignToolPath verify /pa /v $file.FullName
-                if ($LASTEXITCODE -ne 0) {
-                    throw "Signature verification failed for $($file.Name)"
-                }
+            Write-Host "Verifying $($filePaths.Count) signed file(s)..."
+            & $SignToolPath verify /pa /v @filePaths
+            if ($LASTEXITCODE -ne 0) {
+                throw 'Batch signature verification failed'
             }
 
             [IO.Compression.ZipFile]::CreateFromDirectory(
