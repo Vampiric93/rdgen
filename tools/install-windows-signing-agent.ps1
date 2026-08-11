@@ -34,7 +34,8 @@ function ConvertTo-EncodedCommand {
 
 $rawBaseUrl = 'https://raw.githubusercontent.com/Vampiric93/rdgen/5f015b1/tools'
 $signToolPath = 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.19041.0\x64\signtool.exe'
-$apiKeyFile = Join-Path $InstallDirectory 'api-key.dpapi'
+$apiKeyFile = Join-Path $InstallDirectory 'api-key.txt'
+$legacyApiKeyFile = Join-Path $InstallDirectory 'api-key.dpapi'
 $sshKeyPath = Join-Path $InstallDirectory 'rdgen-signer-ed25519'
 
 New-Item -ItemType Directory -Path $InstallDirectory -Force | Out-Null
@@ -71,9 +72,20 @@ if (-not (Test-Path -LiteralPath $sshKeyPath -PathType Leaf)) {
     }
 }
 
+$apiKey = $null
+$apiKeyRegenerated = $false
 if (Test-Path -LiteralPath $apiKeyFile -PathType Leaf) {
-    $apiKey = ConvertTo-PlainText (ConvertTo-SecureString (Get-Content -LiteralPath $apiKeyFile -Raw))
-} else {
+    $apiKey = (Get-Content -LiteralPath $apiKeyFile -Raw).Trim()
+} elseif (Test-Path -LiteralPath $legacyApiKeyFile -PathType Leaf) {
+    try {
+        $apiKey = ConvertTo-PlainText (ConvertTo-SecureString (Get-Content -LiteralPath $legacyApiKeyFile -Raw))
+    }
+    catch {
+        Write-Warning 'The incomplete API key left by the previous run will be replaced.'
+    }
+}
+
+if ([string]::IsNullOrWhiteSpace($apiKey)) {
     $randomBytes = New-Object byte[] 32
     $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
     try {
@@ -83,10 +95,10 @@ if (Test-Path -LiteralPath $apiKeyFile -PathType Leaf) {
         $rng.Dispose()
     }
     $apiKey = [Convert]::ToBase64String($randomBytes)
-    ConvertTo-SecureString $apiKey -AsPlainText -Force |
-        ConvertFrom-SecureString |
-        Set-Content -LiteralPath $apiKeyFile -Encoding ascii
+    $apiKeyRegenerated = $true
 }
+[IO.File]::WriteAllText($apiKeyFile, $apiKey, [Text.Encoding]::ASCII)
+Remove-Item -LiteralPath $legacyApiKeyFile -Force -ErrorAction SilentlyContinue
 
 $target = "$RemoteUser@$RemoteHost"
 $previousErrorActionPreference = $ErrorActionPreference
@@ -99,7 +111,7 @@ finally {
     $ErrorActionPreference = $previousErrorActionPreference
 }
 
-if (-not $keyInstalled) {
+if (-not $keyInstalled -or $apiKeyRegenerated) {
     Write-Host ''
     Write-Host "Enter the password for $target once. It will not be saved." -ForegroundColor Yellow
     $bootstrapCommand = @'

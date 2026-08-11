@@ -28,18 +28,25 @@ if (-not $mutex.WaitOne(0)) {
 
 $tunnelJob = $null
 try {
-    $apiKeyFile = Join-Path $InstallDirectory 'api-key.dpapi'
+    $apiKeyFile = Join-Path $InstallDirectory 'api-key.txt'
+    $legacyApiKeyFile = Join-Path $InstallDirectory 'api-key.dpapi'
     $sshKeyPath = Join-Path $InstallDirectory 'rdgen-signer-ed25519'
     $agentScript = Join-Path $InstallDirectory 'windows-signing-agent.ps1'
     $tunnelScript = Join-Path $InstallDirectory 'windows-signing-tunnel.ps1'
 
-    foreach ($requiredFile in @($apiKeyFile, $sshKeyPath, $agentScript, $tunnelScript)) {
+    foreach ($requiredFile in @($sshKeyPath, $agentScript, $tunnelScript)) {
         if (-not (Test-Path -LiteralPath $requiredFile -PathType Leaf)) {
             throw "Missing signer file: $requiredFile. Run the installer again."
         }
     }
 
-    $apiKey = ConvertTo-PlainText (ConvertTo-SecureString (Get-Content -LiteralPath $apiKeyFile -Raw))
+    if (Test-Path -LiteralPath $apiKeyFile -PathType Leaf) {
+        $apiKey = (Get-Content -LiteralPath $apiKeyFile -Raw).Trim()
+    } elseif (Test-Path -LiteralPath $legacyApiKeyFile -PathType Leaf) {
+        $apiKey = ConvertTo-PlainText (ConvertTo-SecureString (Get-Content -LiteralPath $legacyApiKeyFile -Raw))
+    } else {
+        throw 'Signing API key is missing. Run the installer again.'
+    }
 
     Write-Host 'Starting encrypted tunnel to the RDGen server...' -ForegroundColor Cyan
     $tunnelJob = Start-Job -FilePath $tunnelScript -ArgumentList $sshKeyPath, $RemoteHost, $RemoteUser
