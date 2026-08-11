@@ -92,8 +92,16 @@ jobs:
 
       - name: Archive build artifacts
         uses: actions/upload-artifact@master
-        if: ${{ inputs.upload-artifact }}
+        if: ${{ inputs.upload-artifact && inputs.platform != 'Win32' }}
         with:
             name: topmostwindow-artifacts
             path: |
               ./${{ env.build_output_dir }}/WindowInjection.dll
+
+      - name: Archive Win32 build artifacts
+        uses: actions/upload-artifact@master
+        if: ${{ inputs.upload-artifact && inputs.platform == 'Win32' }}
+        with:
+            name: topmostwindow-artifacts
+            path: |
+              ./RustDeskTempTopMostWindow/WindowInjection/${{ inputs.configuration }}/WindowInjection.dll

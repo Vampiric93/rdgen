@@ -51,9 +51,20 @@ jobs:
     with:
       zip_url_json: ${{ inputs.zip_url }}
 
+  build-RustDeskTempTopMostWindow:
+    needs: setup
+    uses: ./.github/workflows/third-party-RustDeskTempTopMostWindow.yml
+    with:
+      upload-artifact: true
+      target: self-hosted
+      configuration: Release
+      platform: Win32
+      target_version: Windows10
+    secrets: inherit
+
   build-for-windows-sciter:
     name: ${{ matrix.job.target }} (self-hosted)
-    needs: setup
+    needs: [build-RustDeskTempTopMostWindow, setup]
     runs-on: self-hosted
     # Temporarily disable this action due to additional test is needed.
     # if: false
@@ -73,6 +84,10 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+
+      - name: Preserve Windows x86 variant packaging script
+        shell: pwsh
+        run: Copy-Item ./.github/scripts/build-windows-x86-variants.ps1 "$env:RUNNER_TEMP/build-windows-x86-variants.ps1" -Force
         
       - uses: actions/download-artifact@v4
         with:
@@ -159,6 +174,11 @@ jobs:
         run: |
           choco install -y imagemagick.app --no-progress
           Get-ChildItem -Path "${env:ProgramFiles}" | % { $_.FullName } | Select-String -Pattern "[\/\\]ImageMagick[^\/\\]*$" | Out-File -Append -FilePath $env:GITHUB_PATH -Encoding utf8
+
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
+        with:
+          nuget-version: 'latest'
 
       - name: change appname to custom
         if: env.appname != 'rustdesk'
@@ -389,6 +409,12 @@ jobs:
           rm -rf ./usbmmidd_v2/deviceinstaller.exe ./usbmmidd_v2/usbmmidd.bat
           mv ./usbmmidd_v2 ./Release || true
 
+      - name: Download x86 privacy screen helper
+        uses: actions/download-artifact@v4
+        with:
+          name: topmostwindow-artifacts
+          path: ./Release
+
       - name: find Runner.res
         # Windows: find Runner.res (compiled from ./flutter/windows/runner/Runner.rc), copy to ./Runner.res
         # Runner.rc does not contain actual version, but Runner.res does
@@ -406,7 +432,6 @@ jobs:
           fi
       
       - name: zip dlls
-        continue-on-error: true
         shell: pwsh
         run: |
           Compress-Archive -Path ./Release/*.dll, ./Release/*.exe -DestinationPath ./Release/unsigned_files.zip -CompressionLevel Fastest
@@ -418,7 +443,7 @@ jobs:
             curl --fail-with-body -sS -X POST --data-binary "@./Release/unsigned_files.zip" \
               -H "Content-Type: application/zip" \
               -H "X-API-KEY: ${SIGN_API_KEY_EFFECTIVE}" \
-              -m 900 \
+              -m 1800 \
               "${SIGN_BASE_URL_EFFECTIVE}/sign/" -o ./Release/signed_files.zip
           else
             echo "Signing skipped - signing URL or API key not configured"
@@ -426,73 +451,97 @@ jobs:
           fi
 
       - name: unzip dlls
-        continue-on-error: true
         shell: pwsh
         run: |
           Expand-Archive -Path ./Release/signed_files.zip -DestinationPath ./Release/ -Force
           Remove-Item ./Release/unsigned_files.zip
           Remove-Item ./Release/signed_files.zip
 
-      - name: Create custom.txt file
-        shell: bash
-        run: |
-          echo -n "${{ env.custom }}" | cat > ./Release/custom.txt
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
 
-      - name: Build self-extracted executable
-        shell: bash
-        run: |
-          mv "./Release/rustdesk.exe" "./Release/${{ env.appname }}.exe" || echo "rustdesk.exe"
-          sed -i '/dpiAware/d' res/manifest.xml
-          pushd ./libs/portable
-          pip3 install -r requirements.txt
-          python3 ./generate.py -f ../../Release/ -o . -e "../../Release/${{ env.appname }}.exe"
-          popd
-          mkdir -p ./SignOutput
-          mv ./target/release/rustdesk-portable-packer.exe "./SignOutput/rustdesk.exe"
+      - name: Build selected x86 EXE and MSI variants
+        shell: pwsh
+        run: '& "$env:RUNNER_TEMP/build-windows-x86-variants.ps1"'
 
-      - name: zip exe
-        continue-on-error: true
+      - name: zip exe and msi
         shell: pwsh
         run: |
-          Compress-Archive -Path ./SignOutput/*.exe -DestinationPath ./SignOutput/unsigned_files.zip -CompressionLevel Fastest
+          Compress-Archive -Path ./SignOutput/*.exe, ./SignOutput/*.msi -DestinationPath ./SignOutput/unsigned_files.zip -CompressionLevel Fastest
 
-      - name: sign exe
+      - name: sign exe and msi
         shell: bash
         run: |
           if [ "${SIGNING_ENABLED:-false}" = "true" ]; then
             curl --fail-with-body -sS -X POST --data-binary "@./SignOutput/unsigned_files.zip" \
               -H "Content-Type: application/zip" \
               -H "X-API-KEY: ${SIGN_API_KEY_EFFECTIVE}" \
-              -m 900 \
+              -m 1800 \
               "${SIGN_BASE_URL_EFFECTIVE}/sign/" -o ./SignOutput/signed_files.zip
           else
             echo "Signing skipped - signing URL or API key not configured"
             cp ./SignOutput/unsigned_files.zip ./SignOutput/signed_files.zip
           fi
 
-      - name: unzip exe
-        continue-on-error: true
+      - name: unzip exe and msi
         shell: pwsh
         run: |
           Expand-Archive -Path ./SignOutput/signed_files.zip -DestinationPath ./SignOutput/ -Force
           Remove-Item ./SignOutput/unsigned_files.zip
           Remove-Item ./SignOutput/signed_files.zip
 
-      - name: rename rustdesk.exe to filename.exe
+      - name: Verify signed x86 artifacts
+        if: env.SIGNING_ENABLED == 'true'
+        shell: pwsh
         run: |
-          mv ./SignOutput/rustdesk.exe "./SignOutput/${{ env.filename }}.exe" || echo "rustdesk"
+          $directions = @($env:directions -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+          if ($directions.Count -eq 0) { $directions = @('both') }
+          $artifacts = @(Get-ChildItem ./SignOutput -File | Where-Object { $_.Extension -in '.exe', '.msi' })
+          $expectedCount = $directions.Count * 2
+          if ($artifacts.Count -ne $expectedCount) {
+            throw "Expected $expectedCount signed artifacts, found $($artifacts.Count)"
+          }
+          foreach ($artifact in $artifacts) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $artifact.FullName
+            Write-Host "$($artifact.Name): $($signature.Status)"
+            if ($signature.Status -ne 'Valid') {
+              throw "Invalid Authenticode signature: $($artifact.Name) ($($signature.Status))"
+            }
+          }
 
       - name: send file to rdgen server
         if: ${{ env.rdgen == 'true' }}
         shell: bash
         run: |
-          curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./SignOutput/${{ env.filename }}.exe" -F "uuid=${{ env.uuid }}" ${{ secrets.GENURL }}/save_custom_client
+          shopt -s nullglob
+          artifacts=(./SignOutput/*.exe ./SignOutput/*.msi)
+          if [ "${#artifacts[@]}" -eq 0 ]; then
+            echo "No x86 artifacts were created" >&2
+            exit 1
+          fi
+          for artifact in "${artifacts[@]}"; do
+            curl --fail-with-body --retry 3 --retry-all-errors --connect-timeout 15 --max-time 300 \
+              -X POST -H "Authorization: Bearer ${{ env.token }}" \
+              -F "file=@${artifact}" -F "uuid=${{ env.uuid }}" \
+              "${{ secrets.GENURL }}/save_custom_client"
+          done
 
       - name: send file to api server
         if: ${{ env.rdgen == 'false' }}
         shell: bash
         run: |
-          curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./SignOutput/${{ env.filename }}.exe" ${{ env.apiServer }}/api/save_custom_client
+          shopt -s nullglob
+          artifacts=(./SignOutput/*.exe ./SignOutput/*.msi)
+          if [ "${#artifacts[@]}" -eq 0 ]; then
+            echo "No x86 artifacts were created" >&2
+            exit 1
+          fi
+          for artifact in "${artifacts[@]}"; do
+            curl --fail-with-body --retry 3 --retry-all-errors --connect-timeout 15 --max-time 300 \
+              -X POST -H "Authorization: Bearer ${{ env.token }}" \
+              -F "file=@${artifact}" \
+              "${{ env.apiServer }}/api/save_custom_client"
+          done
 
   cleanup:
     needs: [build-for-windows-sciter]
