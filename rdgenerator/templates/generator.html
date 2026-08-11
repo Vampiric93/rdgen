@@ -382,7 +382,7 @@
     <script>
         let nextBrandId = 0;
 
-        function addBrand() {
+        function addBrand(savedBrand = {}) {
             const id = nextBrandId++;
             const card = document.createElement('div');
             card.className = 'brand-card';
@@ -396,18 +396,31 @@
                 <input type="text" id="extra_suffix_${id}" name="extra_suffix_${id}" placeholder="secondbrand">
                 <label for="extra_iconfile_${id}">App icon (square PNG):</label>
                 <input type="file" id="extra_iconfile_${id}" name="extra_iconfile_${id}" accept="image/png">
+                <input type="hidden" name="extra_iconbase64_${id}" value="">
                 <div class="extra-icon-preview"></div><br>
                 <label for="extra_logofile_${id}">App logo (PNG):</label>
                 <input type="file" id="extra_logofile_${id}" name="extra_logofile_${id}" accept="image/png">
+                <input type="hidden" name="extra_logobase64_${id}" value="">
                 <div class="extra-logo-preview"></div>
             `;
+            card.querySelector(`#extra_suffix_${id}`).value = savedBrand.suffix || '';
             card.querySelector('.remove-brand').addEventListener('click', () => card.remove());
             card.querySelector(`#extra_iconfile_${id}`).addEventListener('change', event => {
+                card.querySelector(`[name="extra_iconbase64_${id}"]`).value = '';
                 previewImageElement(event.target, card.querySelector('.extra-icon-preview'));
             });
             card.querySelector(`#extra_logofile_${id}`).addEventListener('change', event => {
+                card.querySelector(`[name="extra_logobase64_${id}"]`).value = '';
                 previewImageElement(event.target, card.querySelector('.extra-logo-preview'));
             });
+            if (savedBrand.icon) {
+                card.querySelector(`[name="extra_iconbase64_${id}"]`).value = savedBrand.icon;
+                card.querySelector('.extra-icon-preview').innerHTML = `<img src="${savedBrand.icon}" style="max-width: 300px; max-height: 60px;">`;
+            }
+            if (savedBrand.logo) {
+                card.querySelector(`[name="extra_logobase64_${id}"]`).value = savedBrand.logo;
+                card.querySelector('.extra-logo-preview').innerHTML = `<img src="${savedBrand.logo}" style="max-width: 300px; max-height: 60px;">`;
+            }
             document.getElementById('extra-brands').appendChild(card);
         }
 
@@ -418,7 +431,7 @@
             document.querySelectorAll('#extra-brands input').forEach(input => input.disabled = !enabled);
         }
 
-        document.getElementById('add-brand').addEventListener('click', addBrand);
+        document.getElementById('add-brand').addEventListener('click', () => addBrand());
         document.querySelectorAll('.platform-icon').forEach(icon => {
             icon.addEventListener('click', function() {
                 document.querySelectorAll('.platform-icon').forEach(i => i.classList.remove('active'));
@@ -641,6 +654,23 @@
                 }
             }
 
+            formData.extra_brands = [];
+            for (const card of document.querySelectorAll('#extra-brands .brand-card')) {
+                const suffix = card.querySelector('input[name^="extra_suffix_"]').value;
+                const iconPreview = card.querySelector('.extra-icon-preview img');
+                const logoPreview = card.querySelector('.extra-logo-preview img');
+                formData.extra_brands.push({
+                    suffix: suffix,
+                    icon: iconPreview && iconPreview.src.startsWith('data:image/png;base64') ? iconPreview.src : '',
+                    logo: logoPreview && logoPreview.src.startsWith('data:image/png;base64') ? logoPreview.src : ''
+                });
+            }
+            Object.keys(formData).forEach(key => {
+                if (key.startsWith('extra_') && key !== 'extra_brands') {
+                    delete formData[key];
+                }
+            });
+
             const jsonData = JSON.stringify(formData, null, 2);
             const blob = new Blob([jsonData], { type: "application/json" });
             const url = URL.createObjectURL(blob);
@@ -675,7 +705,15 @@
                     reader.onload = (e) => {
                         try {
                             const formData = JSON.parse(e.target.result);
+                            document.getElementById('extra-brands').innerHTML = '';
+                            nextBrandId = 0;
+                            if (Array.isArray(formData.extra_brands)) {
+                                formData.extra_brands.forEach(addBrand);
+                            }
                             for (const key in formData) {
+                                if (key === 'extra_brands') {
+                                    continue;
+                                }
                                 // More robust selector: checks for name OR id
                                 const elements = document.querySelectorAll(`[name="${key}"], [id="${key}"]`);
 

@@ -43,9 +43,16 @@ def _sanitize_brand_suffix(value):
 def _validate_brand_image(upload, *, square=False):
     if not upload:
         return
+    image_source = upload
+    if isinstance(upload, str):
+        try:
+            _, encoded = upload.split(';base64,', 1)
+            image_source = io.BytesIO(base64.b64decode(encoded, validate=True))
+        except (ValueError, TypeError) as error:
+            raise ValueError('Invalid base64 PNG image.') from error
     try:
         try:
-            image = Image.open(upload)
+            image = Image.open(image_source)
             image_format = image.format
             image_size = image.size
             image.verify()
@@ -56,7 +63,8 @@ def _validate_brand_image(upload, *, square=False):
         if square and image_size[0] != image_size[1]:
             raise ValueError('App icon dimensions must be square.')
     finally:
-        upload.seek(0)
+        if hasattr(upload, 'seek'):
+            upload.seek(0)
 
 
 def _collect_extra_brands(request):
@@ -75,8 +83,8 @@ def _collect_extra_brands(request):
             raise ValueError(f'Duplicate client suffix: {suffix}')
         suffixes.add(normalized)
 
-        icon = request.FILES.get(f'extra_iconfile_{brand_id}')
-        logo = request.FILES.get(f'extra_logofile_{brand_id}')
+        icon = request.FILES.get(f'extra_iconfile_{brand_id}') or request.POST.get(f'extra_iconbase64_{brand_id}')
+        logo = request.FILES.get(f'extra_logofile_{brand_id}') or request.POST.get(f'extra_logobase64_{brand_id}')
         if not icon and not logo:
             raise ValueError(f'Add an icon or logo for additional client {position}.')
         _validate_brand_image(icon, square=True)

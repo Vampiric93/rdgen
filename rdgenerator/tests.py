@@ -1,4 +1,5 @@
 from io import BytesIO
+import base64
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import RequestFactory, SimpleTestCase
@@ -11,6 +12,11 @@ def png_file(name, size=(64, 64)):
     output = BytesIO()
     Image.new('RGBA', size, (20, 80, 160, 255)).save(output, format='PNG')
     return SimpleUploadedFile(name, output.getvalue(), content_type='image/png')
+
+
+def png_data_uri(size=(64, 64)):
+    upload = png_file('saved.png', size)
+    return 'data:image/png;base64,' + base64.b64encode(upload.read()).decode()
 
 
 class BatchBrandingTests(SimpleTestCase):
@@ -52,3 +58,14 @@ class BatchBrandingTests(SimpleTestCase):
         })
         with self.assertRaisesRegex(ValueError, 'square'):
             _collect_extra_brands(request)
+
+    def test_imported_base64_brand_assets_are_accepted(self):
+        request = self.factory.post('/generator', {
+            'extra_brand_id': '2',
+            'extra_suffix_2': 'imported',
+            'extra_iconbase64_2': png_data_uri(),
+            'extra_logobase64_2': png_data_uri((200, 60)),
+        })
+        brands = _collect_extra_brands(request)
+        self.assertTrue(brands[0]['iconfile'].startswith('data:image/png;base64,'))
+        self.assertTrue(brands[0]['logofile'].startswith('data:image/png;base64,'))
