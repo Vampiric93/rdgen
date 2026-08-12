@@ -10,6 +10,11 @@ $rustdeskDirectory = Join-Path $repositoryRoot 'Release'
 $signOutputDirectory = Join-Path $repositoryRoot 'SignOutput'
 $portableDirectory = Join-Path $repositoryRoot 'libs\portable'
 $msiDirectory = Join-Path $repositoryRoot 'res\msi'
+$cargoTargetDirectory = if ([string]::IsNullOrWhiteSpace($env:CARGO_TARGET_DIR)) {
+    Join-Path $repositoryRoot 'target'
+} else {
+    $env:CARGO_TARGET_DIR
+}
 
 $directionSuffixes = @{
     incoming = 'incoming'
@@ -229,7 +234,7 @@ foreach ($direction in $directions) {
         Pop-Location
     }
 
-    $portableOutput = Join-Path $repositoryRoot 'target\release\rustdesk-portable-packer.exe'
+    $portableOutput = Join-Path $cargoTargetDirectory 'release\rustdesk-portable-packer.exe'
     if (-not (Test-Path -LiteralPath $portableOutput -PathType Leaf)) {
         throw "Portable EXE output was not created for $direction"
     }

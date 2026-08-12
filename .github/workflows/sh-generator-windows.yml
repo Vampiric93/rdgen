@@ -68,6 +68,10 @@ jobs:
     name: Build Windows
     needs: [build-RustDeskTempTopMostWindow, generate-bridge, setup]
     runs-on: self-hosted
+    env:
+      # Keep Cargo artifacts on the self-hosted runner's SSD. Cargo handles
+      # invalidation when sources, features, or the toolchain change.
+      CARGO_TARGET_DIR: C:/actions-runner/_local-cache/cargo-target-x64
     strategy:
       fail-fast: false
       matrix:
@@ -174,6 +178,22 @@ jobs:
         with:
           repository: rustdesk/rustdesk
           submodules: recursive
+
+      - name: Prepare persistent local Rust build cache
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path $env:CARGO_TARGET_DIR -Force | Out-Null
+          $workspaceTarget = Join-Path $PWD 'target'
+          if (Test-Path -LiteralPath $workspaceTarget) {
+            $item = Get-Item -LiteralPath $workspaceTarget -Force
+            if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+              cmd.exe /d /c rmdir "$workspaceTarget"
+            } else {
+              Remove-Item -LiteralPath $workspaceTarget -Recurse -Force
+            }
+          }
+          New-Item -ItemType Junction -Path $workspaceTarget -Target $env:CARGO_TARGET_DIR | Out-Null
+          Write-Host "Using persistent Cargo target directory: $env:CARGO_TARGET_DIR"
 
       - name: Apply safe company branding
         shell: pwsh

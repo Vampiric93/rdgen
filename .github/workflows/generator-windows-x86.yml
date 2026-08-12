@@ -65,6 +65,10 @@ jobs:
     name: ${{ matrix.job.target }} (self-hosted)
     needs: [build-RustDeskTempTopMostWindow, setup]
     runs-on: self-hosted
+    env:
+      # This runner has persistent local storage. Cargo fingerprints invalidate
+      # stale products, so there is no need to download a multi-gigabyte cache.
+      CARGO_TARGET_DIR: C:/actions-runner/_local-cache/cargo-target-x86
     # Temporarily disable this action due to additional test is needed.
     # if: false
     strategy:
@@ -298,9 +302,21 @@ jobs:
           targets: ${{ matrix.job.target }}
           components: "rustfmt"
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: ${{ matrix.job.os }}-sciter
+      - name: Prepare persistent local Rust build cache
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path $env:CARGO_TARGET_DIR -Force | Out-Null
+          $workspaceTarget = Join-Path $PWD 'target'
+          if (Test-Path -LiteralPath $workspaceTarget) {
+            $item = Get-Item -LiteralPath $workspaceTarget -Force
+            if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+              cmd.exe /d /c rmdir "$workspaceTarget"
+            } else {
+              Remove-Item -LiteralPath $workspaceTarget -Recurse -Force
+            }
+          }
+          New-Item -ItemType Junction -Path $workspaceTarget -Target $env:CARGO_TARGET_DIR | Out-Null
+          Write-Host "Using persistent Cargo target directory: $env:CARGO_TARGET_DIR"
 
       - name: Setup vcpkg with Github Actions binary cache
         uses: lukka/run-vcpkg@v11
@@ -441,7 +457,7 @@ jobs:
           sed -i 's/branch = "dyn"/branch = "dyn_x86"/g' ./Cargo.toml
           cargo build --features inline,vram,hwcodec --release --bins
           mkdir -p ./Release
-          mv ./target/release/rustdesk.exe ./Release/rustdesk.exe
+          mv "$CARGO_TARGET_DIR/release/rustdesk.exe" ./Release/rustdesk.exe
           curl -LJ -o ./Release/sciter.dll https://github.com/c-smile/sciter-sdk/raw/master/bin.win/x32/sciter.dll
           echo "output_folder=./Release" >> $GITHUB_OUTPUT
           curl -LJ -o ./usbmmidd_v2.zip https://github.com/rustdesk-org/rdev/releases/download/usbmmidd_v2/usbmmidd_v2.zip
