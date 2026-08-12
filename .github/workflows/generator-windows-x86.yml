@@ -320,6 +320,61 @@ jobs:
           vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
           doNotCache: true
 
+      - name: Verify the persistent vcpkg cache is writable
+        shell: pwsh
+        run: |
+          if (-not $env:VCPKG_ROOT) {
+            throw 'VCPKG_ROOT is not set; the persistent vcpkg setup step did not run.'
+          }
+          $probeDirs = @(
+            $env:VCPKG_ROOT,
+            (Join-Path $env:VCPKG_ROOT 'buildtrees'),
+            (Join-Path $env:VCPKG_ROOT 'buildtrees\detect_compiler'),
+            (Join-Path $env:VCPKG_ROOT 'packages'),
+            (Join-Path $env:VCPKG_ROOT 'installed'),
+            (Join-Path $env:VCPKG_ROOT 'downloads')
+          )
+          $blocked = @()
+          foreach ($dir in $probeDirs) {
+            if (-not (Test-Path -LiteralPath $dir)) { continue }
+            $probe = Join-Path $dir '.rdgen-write-probe'
+            try {
+              Set-Content -LiteralPath $probe -Value 'probe' -ErrorAction Stop
+              Remove-Item -LiteralPath $probe -Force -ErrorAction Stop
+            } catch {
+              $blocked += "$dir -- cannot create files: $($_.Exception.Message)"
+              continue
+            }
+            # Existing files are the real trap. They inherit only ACEs marked (OI),
+            # so a cache populated from an elevated session stays read-only here even
+            # though the directories themselves are writable.
+            $samples = Get-ChildItem -LiteralPath $dir -File -ErrorAction SilentlyContinue |
+              Where-Object { $_.Extension -ne '.exe' } |
+              Select-Object -First 5
+            foreach ($sample in $samples) {
+              try {
+                $stream = [IO.File]::Open($sample.FullName, 'Open', 'Write', 'ReadWrite')
+                $stream.Close()
+              } catch {
+                $blocked += "$($sample.FullName) -- cannot reopen for write: $($_.Exception.Message)"
+              }
+            }
+          }
+          $account = (whoami).Trim()
+          if ($blocked.Count -gt 0) {
+            $message = @(
+              "The persistent vcpkg cache at $env:VCPKG_ROOT is not writable by $account.",
+              'This happens when vcpkg is bootstrapped or run manually from an elevated',
+              'session: the files it leaves behind keep administrative ACLs, and vcpkg then',
+              'dies at "Detecting compiler hash" with "open_for_write(...): permission denied".',
+              'Fix it once from an elevated session on the runner:',
+              "  icacls $env:VCPKG_ROOT /grant `"${account}:(OI)(CI)M`" /T /C",
+              'Blocked paths:'
+            ) + $blocked
+            throw ($message -join "`n")
+          }
+          Write-Host "Persistent vcpkg cache at $env:VCPKG_ROOT is writable by $account."
+
       - name: Enable FFmpeg swresample for x86
         shell: pwsh
         run: |
