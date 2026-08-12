@@ -215,6 +215,17 @@ jobs:
           vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
           doNotCache: true
 
+      - name: Enable FFmpeg swresample for x64
+        shell: pwsh
+        run: |
+          $portfile = Join-Path $PWD 'res/vcpkg/ffmpeg/portfile.cmake'
+          $content = Get-Content -LiteralPath $portfile -Raw
+          if ($content -notmatch '--disable-swresample') {
+            throw 'Expected FFmpeg swresample option was not found'
+          }
+          $content.Replace('--disable-swresample', '--enable-swresample') |
+            Set-Content -LiteralPath $portfile -Encoding utf8
+
       - name: Install x64 vcpkg dependencies
         env:
           VCPKG_DEFAULT_HOST_TRIPLET: ${{ matrix.job.vcpkg-triplet }}
