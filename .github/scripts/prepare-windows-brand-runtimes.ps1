@@ -66,11 +66,12 @@ for ($index = 0; $index -lt $brands.Count; $index++) {
     }
 
     $iconPath = ''
-    if ($index -gt 0 -and $brand.icon) {
+    if ($brand.icon) {
         $iconSource = Join-Path $assetsDirectory ([string]$brand.icon)
         if (-not (Test-Path -LiteralPath $iconSource -PathType Leaf)) {
             throw "Brand icon not found: $iconSource"
         }
+        Copy-Item -LiteralPath $iconSource -Destination (Join-Path $destination 'icon.png') -Force
         $iconPath = Join-Path $brandRoot "brand-$index.ico"
         & magick $iconSource -define icon:auto-resize=256,64,48,32,16 $iconPath
         if ($LASTEXITCODE -ne 0) { throw "Could not create icon for $($brand.filename)" }
@@ -86,7 +87,7 @@ for ($index = 0; $index -lt $brands.Count; $index++) {
         if ($LASTEXITCODE -ne 0) { throw "Could not patch icon for $($brand.filename)" }
 
         $assetDirectory = Join-Path $destination 'data\flutter_assets\assets'
-        if (Test-Path -LiteralPath $assetDirectory -PathType Container) {
+        if ($index -gt 0 -and (Test-Path -LiteralPath $assetDirectory -PathType Container)) {
             Copy-Item -LiteralPath $iconSource -Destination (Join-Path $assetDirectory 'icon.png') -Force
             & magick $iconSource (Join-Path $assetDirectory 'icon.svg')
             if ($LASTEXITCODE -ne 0) { throw "Could not update UI icon for $($brand.filename)" }

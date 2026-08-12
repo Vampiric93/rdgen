@@ -71,6 +71,27 @@ def update_powered_by(source_root: Path, company: str) -> None:
             path.write_text("".join(lines), encoding="utf-8", newline="")
 
 
+def enable_runtime_ui_icon(source_root: Path) -> None:
+    path = source_root / "src" / "ui.rs"
+    text = path.read_text(encoding="utf-8")
+    marker = "pub fn get_icon() -> String {\n"
+    if marker not in text:
+        raise RuntimeError("get_icon was not found in src/ui.rs")
+
+    loader = """pub fn get_icon() -> String {
+    #[cfg(target_os = "windows")]
+    if let Ok(executable) = std::env::current_exe() {
+        if let Some(directory) = executable.parent() {
+            let icon = directory.join("icon.png");
+            if icon.is_file() {
+                return format!("file:///{}", icon.to_string_lossy().replace('\\\\', "/"));
+            }
+        }
+    }
+"""
+    path.write_text(text.replace(marker, loader, 1), encoding="utf-8", newline="")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("source_root", type=Path)
@@ -119,6 +140,7 @@ def main() -> None:
             changed_files.append(relative_path)
 
     update_powered_by(root, company)
+    enable_runtime_ui_icon(root)
     print(f"Applied safe company branding to {len(changed_files)} source files and translations")
 
 
