@@ -72,6 +72,9 @@ jobs:
       # Keep Cargo artifacts on the self-hosted runner's SSD. Cargo handles
       # invalidation when sources, features, or the toolchain change.
       CARGO_TARGET_DIR: C:/actions-runner/_local-cache/cargo-target-x64
+      # x86 and x64 share the persistent runner. Never inherit the x86 default
+      # host toolchain left by an earlier x86 build.
+      RUSTUP_TOOLCHAIN: 1.75.0-x86_64-pc-windows-msvc
     strategy:
       fail-fast: false
       matrix:
@@ -189,6 +192,40 @@ jobs:
           New-Item -ItemType Junction -Path $workspaceTarget -Target $env:CARGO_TARGET_DIR | Out-Null
           Write-Host "Using persistent Cargo target directory: $env:CARGO_TARGET_DIR"
           Write-Host "Using persistent vcpkg binary cache: $env:VCPKG_BINARY_SOURCES"
+
+      - name: Verify x64 build toolchain
+        shell: pwsh
+        run: |
+          rustup component add rustfmt
+          $rustInfo = (rustc -vV) -join "`n"
+          $clangInfo = (& "$env:LIBCLANG_PATH\clang.exe" --version) -join "`n"
+          Write-Host $rustInfo
+          Write-Host $clangInfo
+          if ($rustInfo -notmatch 'host: x86_64-pc-windows-msvc') {
+            throw "Expected an x64 Rust host, got:`n$rustInfo"
+          }
+          if ($clangInfo -notmatch 'Target: x86_64-pc-windows-msvc') {
+            throw "Expected an x64 LLVM host, got:`n$clangInfo"
+          }
+
+      - name: Setup persistent local vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgDirectory: C:\vcpkg
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+          doNotCache: true
+
+      - name: Install x64 vcpkg dependencies
+        env:
+          VCPKG_DEFAULT_HOST_TRIPLET: ${{ matrix.job.vcpkg-triplet }}
+        shell: bash
+        run: |
+          if ! "$VCPKG_ROOT/vcpkg" install \
+            --triplet "${{ matrix.job.vcpkg-triplet }}" \
+            --x-install-root="$VCPKG_ROOT/installed"; then
+            find "$VCPKG_ROOT" -name "*.log" -print
+            exit 1
+          fi
 
       - name: Apply safe company branding
         shell: pwsh
