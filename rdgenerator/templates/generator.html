@@ -135,8 +135,34 @@
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             z-index: 100; /* Ensure it's above other content */
         }
+        .save-load-section-container .section {
+            padding: 14px;
+        }
+        .save-load-section-container h2 {
+            margin-bottom: 12px;
+            font-size: 1rem;
+            cursor: pointer;
+        }
+        .fixed-build-button {
+            display: block;
+            width: 100%;
+            background-color: #16833b;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+        .fixed-build-button:hover {
+            background-color: #116b30;
+        }
         .save-load-section {
             display: none; /* Initially hidden */
+            margin-bottom: 10px;
+        }
+        @media (max-width: 700px) {
+            .save-load-section-container {
+                top: 8px;
+                left: 8px;
+                right: 8px;
+            }
         }
         .error {
             color: red;
@@ -211,6 +237,7 @@
                     <input type="file" id="fileInput" style="display:none;" accept=".json">
                     <button type="button" onclick="loadFormData()">Load Configuration</button>
                 </div>
+                <button type="submit" class="fixed-build-button"><i class="fas fa-rocket"></i> Generate Custom Client</button>
             </div>
         </div>
         {% if form.iconfile.errors %}
@@ -371,11 +398,6 @@
                     {{ form.defaultManual }}<br><br>
                     <label for="{{ form.overrideManual.id_for_label }}">Override settings</label><br>
                     {{ form.overrideManual }}<br><br>
-            </div>
-        </div>
-        <div class="platform">
-            <div class="section">
-                <button type="submit"><i class="fas fa-rocket"></i> Generate Custom Client</button>
             </div>
         </div>
     </form>
