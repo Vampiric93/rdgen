@@ -324,11 +324,14 @@ jobs:
         env:
           VCPKG_DEFAULT_HOST_TRIPLET: ${{ matrix.job.vcpkg-triplet }}
         run: |
+          buildtrees_root="${RUNNER_TEMP//\\//}/vcpkg-buildtrees-x86"
+          rm -rf "$buildtrees_root"
           if ! $VCPKG_ROOT/vcpkg \
             install \
             --triplet ${{ matrix.job.vcpkg-triplet }} \
+            --x-buildtrees-root="$buildtrees_root" \
             --x-install-root="$VCPKG_ROOT/installed"; then
-            find "${VCPKG_ROOT}/" -name "*.log" | while read -r _1; do
+            find "$buildtrees_root" -name "*.log" | while read -r _1; do
               echo "$_1:"
               echo "======"
               cat "$_1"
@@ -337,7 +340,7 @@ jobs:
             done
             exit 1
           fi
-          head -n 100 "${VCPKG_ROOT}/buildtrees/ffmpeg/build-${{ matrix.job.vcpkg-triplet }}-rel-out.log" || true
+          head -n 100 "$buildtrees_root/ffmpeg/build-${{ matrix.job.vcpkg-triplet }}-rel-out.log" || true
         shell: bash
 
       - name: Patch hwcodec Windows link libraries
