@@ -57,7 +57,14 @@ for ($index = 0; $index -lt $brands.Count; $index++) {
         if (-not (Test-Path -LiteralPath $logoSource -PathType Leaf)) {
             throw "Brand logo not found: $logoSource"
         }
-        Copy-Item -LiteralPath $logoSource -Destination (Join-Path $destination 'logo.png') -Force
+        # Sciter independently clamps max-width and max-height on images, which
+        # can distort a non-200:60 logo. Place the original, aspect-preserving
+        # image on a transparent 200x60 canvas before the runtime loads it.
+        $sciterLogo = Join-Path $destination 'logo.png'
+        & magick.exe $logoSource -resize '200x60>' -gravity center -background none -extent '200x60' $sciterLogo
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $sciterLogo -PathType Leaf)) {
+            throw "Could not prepare aspect-preserving Sciter logo for $($brand.filename)."
+        }
         $logoDestination = Join-Path $destination 'data\flutter_assets\assets\logo.png'
         if ($index -gt 0 -and (Test-Path -LiteralPath (Split-Path $logoDestination) -PathType Container)) {
             Copy-Item -LiteralPath $logoSource -Destination $logoDestination -Force

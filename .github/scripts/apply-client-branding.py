@@ -142,11 +142,15 @@ pub fn get_icon() -> String {
         index = index.replace(
             logo_marker,
             """                    <div>
-                        {custom_logo ? <img .custom-logo src={custom_logo} style="display:block;max-width:200px;max-height:60px;margin:0 auto 0.8em auto" /> : ""}
+                        {custom_logo ? <img .custom-logo src={custom_logo} style="display:block;width:200px;height:60px;margin:0 auto 0.8em auto" /> : ""}
                         {is_custom_client && handler.get_builtin_option("hide-powered-by-me") != "Y" ? <div .link #powered-by style="opacity:0.5;font-size:0.8em;text-decoration:underline">{translate('powered_by_me')}</div> : ""}
 """,
             1,
         )
+    index = index.replace(
+        "display:block;max-width:200px;max-height:60px;margin:0 auto 0.8em auto",
+        "display:block;width:200px;height:60px;margin:0 auto 0.8em auto",
+    )
     index_path.write_text(index, encoding="utf-8", newline="")
 
 
