@@ -26,7 +26,7 @@ env:
   ANDROID_FLUTTER_VERSION: "3.24.5" 
   # for arm64 linux because official Dart SDK does not work
   FLUTTER_ELINUX_VERSION: "3.16.9"
-  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+  VCPKG_BINARY_SOURCES: 'clear;files,C:\actions-runner\_local-cache\vcpkg-binaries,readwrite'
   # vcpkg version: 2024.07.12
   VCPKG_COMMIT_ID: "120deac3062162151622ca4860575a33844ba10b"
   ARMV7_VCPKG_COMMIT_ID: "6f29f12e82a8293156836ad81cc9bf5af41fe836"
@@ -147,13 +147,6 @@ jobs:
           customHeaders: '{"Content-Type": "application/json"}'
           data: '{"uuid": "${{ env.uuid }}"}'
 
-      - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v9
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-      
       - name: Set rdgen value
         if: ${{ env.rdgen == 'true' }}
         run: |
@@ -179,10 +172,11 @@ jobs:
           repository: rustdesk/rustdesk
           submodules: recursive
 
-      - name: Prepare persistent local Rust build cache
+      - name: Prepare persistent local build caches
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path $env:CARGO_TARGET_DIR -Force | Out-Null
+          New-Item -ItemType Directory -Path 'C:\actions-runner\_local-cache\vcpkg-binaries' -Force | Out-Null
           $workspaceTarget = Join-Path $PWD 'target'
           if (Test-Path -LiteralPath $workspaceTarget) {
             $item = Get-Item -LiteralPath $workspaceTarget -Force
@@ -194,6 +188,7 @@ jobs:
           }
           New-Item -ItemType Junction -Path $workspaceTarget -Target $env:CARGO_TARGET_DIR | Out-Null
           Write-Host "Using persistent Cargo target directory: $env:CARGO_TARGET_DIR"
+          Write-Host "Using persistent vcpkg binary cache: $env:VCPKG_BINARY_SOURCES"
 
       - name: Apply safe company branding
         shell: pwsh

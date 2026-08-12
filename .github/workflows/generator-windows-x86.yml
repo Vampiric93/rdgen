@@ -26,7 +26,7 @@ env:
   ANDROID_FLUTTER_VERSION: "3.24.5"
   # for arm64 linux because official Dart SDK does not work
   FLUTTER_ELINUX_VERSION: "3.16.9"
-  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+  VCPKG_BINARY_SOURCES: 'clear;files,C:\actions-runner\_local-cache\vcpkg-binaries,readwrite'
   # vcpkg version: 2025.08.27
   # If we change the `VCPKG COMMIT_ID`, please remember:
   # 1. Call `$VCPKG_ROOT/vcpkg x-update-baseline` to update the baseline in `vcpkg.json`.
@@ -145,13 +145,6 @@ jobs:
           method: 'POST'
           customHeaders: '{"Content-Type": "application/json"}'
           data: '{"uuid": "${{ env.uuid }}"}'
-
-      - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v9
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Set rdgen value
         if: ${{ env.rdgen == 'true' }}
@@ -302,10 +295,11 @@ jobs:
           targets: ${{ matrix.job.target }}
           components: "rustfmt"
 
-      - name: Prepare persistent local Rust build cache
+      - name: Prepare persistent local build caches
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path $env:CARGO_TARGET_DIR -Force | Out-Null
+          New-Item -ItemType Directory -Path 'C:\actions-runner\_local-cache\vcpkg-binaries' -Force | Out-Null
           $workspaceTarget = Join-Path $PWD 'target'
           if (Test-Path -LiteralPath $workspaceTarget) {
             $item = Get-Item -LiteralPath $workspaceTarget -Force
@@ -317,13 +311,14 @@ jobs:
           }
           New-Item -ItemType Junction -Path $workspaceTarget -Target $env:CARGO_TARGET_DIR | Out-Null
           Write-Host "Using persistent Cargo target directory: $env:CARGO_TARGET_DIR"
+          Write-Host "Using persistent vcpkg binary cache: $env:VCPKG_BINARY_SOURCES"
 
-      - name: Setup vcpkg with Github Actions binary cache
+      - name: Setup persistent local vcpkg
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgDirectory: C:\vcpkg
           vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
-          doNotCache: false
+          doNotCache: true
 
       - name: Enable FFmpeg swresample for x86
         shell: pwsh
