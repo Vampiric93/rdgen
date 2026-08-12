@@ -91,17 +91,41 @@ jobs:
             msbuild ${{ env.project_path }} -p:Configuration=${{ inputs.configuration }} -p:Platform=${{ inputs.platform }} /p:TargetVersion=${{ inputs.target_version }} -p:PlatformToolset=v143
 
       - name: Archive build artifacts
+        id: upload-artifacts
         uses: actions/upload-artifact@master
+        continue-on-error: true
         if: ${{ inputs.upload-artifact && inputs.platform != 'Win32' }}
         with:
             name: topmostwindow-artifacts
+            overwrite: true
+            path: |
+              ./${{ env.build_output_dir }}/WindowInjection.dll
+
+      - name: Retry archive build artifacts
+        uses: actions/upload-artifact@master
+        if: ${{ inputs.upload-artifact && inputs.platform != 'Win32' && steps.upload-artifacts.outcome == 'failure' }}
+        with:
+            name: topmostwindow-artifacts
+            overwrite: true
             path: |
               ./${{ env.build_output_dir }}/WindowInjection.dll
 
       - name: Archive Win32 build artifacts
+        id: upload-win32-artifacts
         uses: actions/upload-artifact@master
+        continue-on-error: true
         if: ${{ inputs.upload-artifact && inputs.platform == 'Win32' }}
         with:
             name: topmostwindow-artifacts
+            overwrite: true
+            path: |
+              ./RustDeskTempTopMostWindow/WindowInjection/${{ inputs.configuration }}/WindowInjection.dll
+
+      - name: Retry archive Win32 build artifacts
+        uses: actions/upload-artifact@master
+        if: ${{ inputs.upload-artifact && inputs.platform == 'Win32' && steps.upload-win32-artifacts.outcome == 'failure' }}
+        with:
+            name: topmostwindow-artifacts
+            overwrite: true
             path: |
               ./RustDeskTempTopMostWindow/WindowInjection/${{ inputs.configuration }}/WindowInjection.dll
