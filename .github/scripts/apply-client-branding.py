@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import html
 from pathlib import Path
 
 
@@ -23,6 +24,8 @@ def replace_in_file(path: Path, company: str, quote: str) -> bool:
         replacement = company.replace('"', '""')
     elif quote == "single":
         replacement = company.replace("\\", "\\\\").replace("'", "\\'")
+    elif quote == "html":
+        replacement = html.escape(company, quote=True)
     else:
         replacement = company
 
@@ -91,8 +94,8 @@ def main() -> None:
     plain_text_files = (
         "flutter/macos/Runner/Configs/AppInfo.xcconfig",
         "res/msi/Package/License.rtf",
-        "src/ui/index.tis",
     )
+    html_files = ("src/ui/index.tis",)
 
     changed_files = []
     for relative_path in double_quoted_files:
@@ -109,6 +112,10 @@ def main() -> None:
     for relative_path in plain_text_files:
         path = root / relative_path
         if replace_in_file(path, company, "plain"):
+            changed_files.append(relative_path)
+    for relative_path in html_files:
+        path = root / relative_path
+        if replace_in_file(path, company, "html"):
             changed_files.append(relative_path)
 
     update_powered_by(root, company)

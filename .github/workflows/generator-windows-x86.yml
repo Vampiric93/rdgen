@@ -452,6 +452,25 @@ jobs:
           rm -rf ./usbmmidd_v2/deviceinstaller.exe ./usbmmidd_v2/usbmmidd.bat
           mv ./usbmmidd_v2 ./Release || true
 
+      - name: Verify x86 Sciter interface
+        shell: pwsh
+        run: |
+          $stdout = Join-Path $env:RUNNER_TEMP 'rdgen-x86-ui-stdout.log'
+          $stderr = Join-Path $env:RUNNER_TEMP 'rdgen-x86-ui-stderr.log'
+          $process = Start-Process -FilePath (Resolve-Path './Release/rustdesk.exe') `
+            -WorkingDirectory (Resolve-Path './Release') `
+            -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
+          Start-Sleep -Seconds 8
+          if (-not $process.HasExited) {
+            Stop-Process -Id $process.Id -Force
+            $process.WaitForExit()
+          }
+          $output = ((Get-Content $stdout, $stderr -Raw -ErrorAction SilentlyContinue) -join "`n")
+          Write-Host $output
+          if ($output -match 'ERROR:TIS|bad syntax') {
+            throw 'The generated x86 Sciter interface contains a syntax error.'
+          }
+
       - name: Download x86 privacy screen helper
         uses: actions/download-artifact@v4
         with:

@@ -21,6 +21,20 @@ for ($index = 0; $index -lt $brands.Count; $index++) {
     $env:filename = [string]$brand.filename
     $env:RDGEN_DIRECTION_SEPARATOR = if ($index -eq 0) { '-' } else { '_' }
 
+    # Portable packages must not share one extraction directory. Otherwise
+    # launching another brand can reuse the previously extracted executable,
+    # assets and icon from %LOCALAPPDATA%.
+    $portableMainPath = Join-Path $repositoryRoot 'libs\portable\src\main.rs'
+    $portableMain = [IO.File]::ReadAllText($portableMainPath)
+    $portablePrefix = ([string]$brand.filename).Replace('\\', '\\\\').Replace('"', '\"')
+    $portableMain = [regex]::Replace(
+        $portableMain,
+        'const APP_PREFIX: &str = "[^"]*";',
+        "const APP_PREFIX: &str = `"$portablePrefix`";",
+        1
+    )
+    [IO.File]::WriteAllText($portableMainPath, $portableMain, [Text.UTF8Encoding]::new($false))
+
     & $VariantScript
     if ($LASTEXITCODE -ne 0) {
         throw "Packaging failed for $($brand.filename)"
