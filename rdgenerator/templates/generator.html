@@ -138,11 +138,6 @@
         .save-load-section-container .section {
             padding: 14px;
         }
-        .save-load-section-container h2 {
-            margin-bottom: 12px;
-            font-size: 1rem;
-            cursor: pointer;
-        }
         .fixed-build-button {
             display: block;
             width: 100%;
@@ -154,7 +149,8 @@
             background-color: #116b30;
         }
         .save-load-section {
-            display: none; /* Initially hidden */
+            display: flex;
+            gap: 8px;
             margin-bottom: 10px;
         }
         @media (max-width: 700px) {
@@ -231,7 +227,6 @@
     <form id="myForm" action="/generator" method="post" enctype="multipart/form-data">
         <div class="save-load-section-container">
             <div class="section">
-                <h2 id="saveLoadTitle">Save/Load Configuration <i class="fas fa-chevron-down"></i></h2>  
                 <div class="save-load-section">  
                     <button type="button" onclick="saveFormData()">Save Configuration</button>
                     <input type="file" id="fileInput" style="display:none;" accept=".json">
@@ -582,21 +577,6 @@
                 reader.readAsDataURL(input.files[0]);
             }
         }
-        const saveLoadTitle = document.getElementById("saveLoadTitle");
-        const saveLoadSection = document.querySelector(".save-load-section");
-
-        saveLoadTitle.addEventListener("click", () => {
-            if (!saveLoadSection.style.display || saveLoadSection.style.display === "none") {
-                saveLoadSection.style.display = "block";
-            } else {
-                saveLoadSection.style.display = "none";
-            }
-
-            const icon = saveLoadTitle.querySelector("i");
-            icon.classList.toggle("fa-chevron-down");
-            icon.classList.toggle("fa-chevron-up");
-        });
-
         async function saveFormData() {
             const filename = document.getElementById("{{ form.exename.id_for_label }}").value;
             if (!filename) {
