@@ -35,7 +35,12 @@ if (Test-Path -LiteralPath $signingRoot) {
 }
 New-Item -ItemType Directory -Path $signingRoot -Force | Out-Null
 
-$requiresIconPatching = @($brands | Select-Object -Skip 1 | Where-Object { $_.icon }).Count -gt 0
+# rcedit patches the icon of every brand runtime that carries one, including the
+# first (see the loop below and build-windows-brand-batch.ps1, neither of which
+# skip index 0). The download guard must match that, or a config whose only
+# icon-bearing brand is the first leaves rcedit absent and the loop dies with
+# "rcedit-x64-v2.0.0.exe is not recognized".
+$requiresIconPatching = @($brands | Where-Object { $_.icon }).Count -gt 0
 $rcEditPath = Join-Path $env:RUNNER_TEMP 'rcedit-x64-v2.0.0.exe'
 if ($requiresIconPatching -and -not (Test-Path -LiteralPath $rcEditPath -PathType Leaf)) {
     Invoke-WebRequest 'https://github.com/electron/rcedit/releases/download/v2.0.0/rcedit-x64.exe' -OutFile $rcEditPath -UseBasicParsing
