@@ -71,14 +71,10 @@ def update_powered_by(source_root: Path, company: str) -> None:
             path.write_text("".join(lines), encoding="utf-8", newline="")
 
 
-def enable_runtime_ui_icon(source_root: Path) -> None:
+def enable_runtime_brand_assets(source_root: Path) -> None:
     path = source_root / "src" / "ui.rs"
     text = path.read_text(encoding="utf-8")
-    marker = "pub fn get_icon() -> String {\n"
-    if marker not in text:
-        raise RuntimeError("get_icon was not found in src/ui.rs")
-
-    loader = """pub fn get_icon() -> String {
+    old_loader = """pub fn get_icon() -> String {
     #[cfg(target_os = "windows")]
     if let Ok(executable) = std::env::current_exe() {
         if let Some(directory) = executable.parent() {
@@ -89,7 +85,69 @@ def enable_runtime_ui_icon(source_root: Path) -> None:
         }
     }
 """
-    path.write_text(text.replace(marker, loader, 1), encoding="utf-8", newline="")
+    loader = """fn runtime_png_data_uri(filename: &str) -> Option<String> {
+    let executable = std::env::current_exe().ok()?;
+    let bytes = std::fs::read(executable.parent()?.join(filename)).ok()?;
+    Some(format!("data:image/png;base64,{}", crate::encode64(bytes)))
+}
+
+pub fn get_logo() -> String {
+    runtime_png_data_uri("logo.png").unwrap_or_default()
+}
+
+pub fn get_icon() -> String {
+    #[cfg(target_os = "windows")]
+    if let Some(icon) = runtime_png_data_uri("icon.png") {
+        return icon;
+    }
+"""
+    marker = "pub fn get_icon() -> String {\n"
+    if old_loader in text:
+        text = text.replace(old_loader, loader, 1)
+    elif "fn runtime_png_data_uri(filename: &str)" not in text:
+        if marker not in text:
+            raise RuntimeError("get_icon was not found in src/ui.rs")
+        text = text.replace(marker, loader, 1)
+
+    implementation = """    fn get_icon(&mut self) -> String {
+        get_icon()
+    }
+"""
+    if "fn get_logo(&mut self)" not in text:
+        if implementation not in text:
+            raise RuntimeError("UI get_icon implementation was not found")
+        text = text.replace(
+            implementation,
+            implementation + "\n    fn get_logo(&mut self) -> String {\n        get_logo()\n    }\n",
+            1,
+        )
+    if "        fn get_logo();" not in text:
+        text = text.replace("        fn get_icon();\n", "        fn get_icon();\n        fn get_logo();\n", 1)
+    path.write_text(text, encoding="utf-8", newline="")
+
+    index_path = source_root / "src" / "ui" / "index.tis"
+    index = index_path.read_text(encoding="utf-8")
+    if "const custom_logo = handler.get_logo();" not in index:
+        index = index.replace(
+            "const is_custom_client = handler.is_custom_client();\n",
+            "const is_custom_client = handler.is_custom_client();\nconst custom_logo = handler.get_logo();\n",
+            1,
+        )
+    logo_marker = """                    <div>
+                        {is_custom_client && handler.get_builtin_option("hide-powered-by-me") != "Y" ? <div .link #powered-by style="opacity:0.5;font-size:0.8em;text-decoration:underline">{translate('powered_by_me')}</div> : ""}
+"""
+    if "<img .custom-logo" not in index:
+        if logo_marker not in index:
+            raise RuntimeError("Sciter main panel marker was not found")
+        index = index.replace(
+            logo_marker,
+            """                    <div>
+                        {custom_logo ? <img .custom-logo src={custom_logo} style="display:block;max-width:200px;max-height:60px;margin:0 auto 0.8em auto" /> : ""}
+                        {is_custom_client && handler.get_builtin_option("hide-powered-by-me") != "Y" ? <div .link #powered-by style="opacity:0.5;font-size:0.8em;text-decoration:underline">{translate('powered_by_me')}</div> : ""}
+""",
+            1,
+        )
+    index_path.write_text(index, encoding="utf-8", newline="")
 
 
 def main() -> None:
@@ -140,7 +198,7 @@ def main() -> None:
             changed_files.append(relative_path)
 
     update_powered_by(root, company)
-    enable_runtime_ui_icon(root)
+    enable_runtime_brand_assets(root)
     print(f"Applied safe company branding to {len(changed_files)} source files and translations")
 
 

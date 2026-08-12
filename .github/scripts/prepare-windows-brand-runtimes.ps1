@@ -52,16 +52,15 @@ for ($index = 0; $index -lt $brands.Count; $index++) {
     $destination = Join-Path $brandRoot $index
     Copy-Item -LiteralPath $sourceRuntime -Destination $destination -Recurse -Force
 
-    if ($index -gt 0 -and $brand.logo) {
+    if ($brand.logo) {
         $logoSource = Join-Path $assetsDirectory ([string]$brand.logo)
-        $logoDestination = Join-Path $destination 'data\flutter_assets\assets\logo.png'
         if (-not (Test-Path -LiteralPath $logoSource -PathType Leaf)) {
             throw "Brand logo not found: $logoSource"
         }
-        if (Test-Path -LiteralPath (Split-Path $logoDestination) -PathType Container) {
+        Copy-Item -LiteralPath $logoSource -Destination (Join-Path $destination 'logo.png') -Force
+        $logoDestination = Join-Path $destination 'data\flutter_assets\assets\logo.png'
+        if ($index -gt 0 -and (Test-Path -LiteralPath (Split-Path $logoDestination) -PathType Container)) {
             Copy-Item -LiteralPath $logoSource -Destination $logoDestination -Force
-        } else {
-            Write-Host "Runtime has no Flutter logo asset; skipping in-app logo for $($brand.filename)."
         }
     }
 
