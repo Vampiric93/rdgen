@@ -730,7 +730,8 @@ jobs:
           shopt -s nullglob
           files=("$output_dir"/*.dmg)
           brand_count=$(python -c 'import json,os; print(len(json.loads(os.environ.get("brands_json") or "[]")) or 1)')
-          expected_count=$((brand_count * 2))
+          direction_count=$(python -c 'import os; values={x for x in os.environ.get("directions", "both").split(",") if x}; print(len(values or {"both"}))')
+          expected_count=$((brand_count * direction_count * 2))
           if [ "${#files[@]}" -ne "$expected_count" ]; then
             echo "Expected $expected_count DMG files, found ${#files[@]}"
             exit 1

@@ -62,6 +62,30 @@ def install_custom_config(bundle: Path, encoded_config: str) -> None:
     (resources / "custom_.txt").write_text(encoded_config, encoding="ascii")
 
 
+DIRECTION_SUFFIXES = {
+    "incoming": "incoming",
+    "outgoing": "outgoing",
+    "both": "full",
+}
+
+
+def selected_direction_configs(environ=os.environ):
+    requested = [value.strip() for value in environ.get("directions", "both").split(",")]
+    requested = list(dict.fromkeys(value for value in requested if value))
+    if not requested:
+        requested = ["both"]
+
+    configs = []
+    for direction in requested:
+        if direction not in DIRECTION_SUFFIXES:
+            raise RuntimeError(f"Unsupported macOS connection type: {direction}")
+        encoded_config = environ.get(f"custom_{direction}", "").strip()
+        if not encoded_config:
+            raise RuntimeError(f"Missing macOS custom configuration for {direction}")
+        configs.append((direction, DIRECTION_SUFFIXES[direction], encoded_config))
+    return configs
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--bundle", required=True, type=Path)
@@ -75,29 +99,32 @@ def main():
     if not brands:
         brands = [{"filename": os.environ.get("filename", "rustdesk"), "icon": "", "logo": ""}]
     assets_dir = Path(os.environ["RDGEN_ASSETS_DIR"])
-    custom_config = os.environ.get("custom", "").strip()
+    direction_configs = selected_direction_configs()
     root = Path(os.environ["RUNNER_TEMP"]) / "rdgen-macos-brands"
     shutil.rmtree(root, ignore_errors=True)
     root.mkdir(parents=True)
     prepared = []
 
     for index, brand in enumerate(brands):
-        brand_dir = root / str(index)
-        bundle = brand_dir / f"{args.app_name}.app"
-        shutil.copytree(args.bundle, bundle, symlinks=True)
-        install_custom_config(bundle, custom_config)
-        if index and brand.get("logo"):
-            logo = assets_dir / brand["logo"]
-            destination = bundle / "Contents/Frameworks/App.framework/Versions/Current/Resources/flutter_assets/assets/logo.png"
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(logo, destination)
-        if index and brand.get("icon"):
-            replace_icon(bundle, assets_dir / brand["icon"], brand_dir)
-        prepared.append({
-            "bundle": str(bundle),
-            "filename": brand["filename"],
-            "dmg": str(args.workspace / f"{brand['filename']}-{args.arch}.dmg"),
-        })
+        for direction, direction_suffix, custom_config in direction_configs:
+            brand_dir = root / str(index) / direction
+            bundle = brand_dir / f"{args.app_name}.app"
+            shutil.copytree(args.bundle, bundle, symlinks=True)
+            install_custom_config(bundle, custom_config)
+            if index and brand.get("logo"):
+                logo = assets_dir / brand["logo"]
+                destination = bundle / "Contents/Frameworks/App.framework/Versions/Current/Resources/flutter_assets/assets/logo.png"
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(logo, destination)
+            if index and brand.get("icon"):
+                replace_icon(bundle, assets_dir / brand["icon"], brand_dir)
+            output_filename = f"{brand['filename']}_{direction_suffix}"
+            prepared.append({
+                "bundle": str(bundle),
+                "filename": output_filename,
+                "direction": direction,
+                "dmg": str(args.workspace / f"{output_filename}-{args.arch}.dmg"),
+            })
 
     args.output.write_text(json.dumps(prepared), encoding="utf-8")
     print(f"Prepared {len(prepared)} branded macOS app bundle(s).")

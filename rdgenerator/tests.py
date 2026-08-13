@@ -152,6 +152,25 @@ class MacOSCustomConfigTests(SimpleTestCase):
             with self.assertRaisesRegex(RuntimeError, 'Invalid macOS'):
                 module.install_custom_config(Path(directory) / 'Test.app', 'not-base64')
 
+    def test_selected_macos_directions_use_matching_configs_and_suffixes(self):
+        module = load_prepare_macos_brands()
+        environ = {
+            'directions': 'incoming,outgoing,both',
+            'custom_incoming': 'incoming-config',
+            'custom_outgoing': 'outgoing-config',
+            'custom_both': 'full-config',
+        }
+        self.assertEqual(module.selected_direction_configs(environ), [
+            ('incoming', 'incoming', 'incoming-config'),
+            ('outgoing', 'outgoing', 'outgoing-config'),
+            ('both', 'full', 'full-config'),
+        ])
+
+    def test_missing_selected_macos_direction_config_is_rejected(self):
+        module = load_prepare_macos_brands()
+        with self.assertRaisesRegex(RuntimeError, 'Missing macOS.*outgoing'):
+            module.selected_direction_configs({'directions': 'outgoing'})
+
 
 class WindowsArtifactNamingTests(SimpleTestCase):
     def test_all_windows_brands_use_underscore_before_direction(self):
