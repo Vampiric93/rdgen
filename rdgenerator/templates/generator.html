@@ -47,7 +47,7 @@
         .header-company-logo {
             display: block;
             width: auto;
-            height: 0.72em;
+            height: 38px;
         }
         h2 {
             color: #fff;
@@ -105,12 +105,14 @@
         }
         .platform-selection-help {
             color: #9ea7b3;
-            margin: -8px 0 12px;
+            margin: -8px 0 8px;
         }
         #batch-launch-status {
             color: #8fc7ff;
             margin-top: 10px;
-            min-height: 1.2em;
+        }
+        #batch-launch-status:empty {
+            display: none;
         }
         .text-64 {
             font-size: 0.5em; 
@@ -209,10 +211,10 @@
             color: #ffd700;
             font-style: italic;
             animation: blink 2s infinite;
-            padding: 5px;
+            padding: 0;
             border-radius: 4px;
-            display: inline-block;
-            margin-left: 10px;
+            display: block;
+            margin: 4px 0 8px;
         }
 
         .password-requirement {
@@ -240,6 +242,21 @@
         .remove-brand {
             background: #9b2525;
             padding: 6px 10px;
+        }
+        .visual-field {
+            margin-bottom: 14px;
+        }
+        .visual-field input[type="file"] {
+            display: block;
+        }
+        .visual-preview:empty {
+            display: none;
+        }
+        .visual-preview:not(:empty) {
+            margin-top: 8px;
+        }
+        #batch-branding {
+            margin: 4px 0 14px;
         }
 
       </style>
@@ -300,7 +317,6 @@
                 {% if form.version.help_text %}
                     <span class="help-text">{{ form.version.help_text }}</span>
                 {% endif %}
-                <div class="help-text">{{ form.version.help_text }}</div>
                 <label for="{{ form.delayFix.id_for_label }}">{{ form.delayFix }} Fix connection delay when using third-party API</label>
                 <label for="{{ form.telegramNotifications.id_for_label }}">{{ form.telegramNotifications }} Notify me in Telegram when Windows signing is required</label>
             </div>
@@ -310,8 +326,6 @@
                 <h2><i class="fas fa-sliders-h"></i> General</h2>
                     <label for="{{ form.exename.id_for_label }}">Name of the configuration (no spaces or special characters, English characters only):</label>
                     {{ form.exename }}<span id="filenameError" class="error"></span><br><br>
-                    <label for="{{ form.primarySuffix.id_for_label }}">File suffix for primary client (optional, for example: gpbic):</label>
-                    {{ form.primarySuffix }}<br><br>
                     <label for="{{ form.appname.id_for_label }}">Custom Application Name (leave blank to use default):</label>
                     {{ form.appname }}<br><br>
                     <label for="{{ form.direction.id_for_label }}">Connection Type:</label>
@@ -364,23 +378,29 @@
                     {{ form.iconbase64.as_hidden }}
                     {{ form.logobase64.as_hidden }}
                     {{ form.privacybase64.as_hidden }}
-                    <label for="{{ form.iconfile.id_for_label }}">Custom App Icon (square PNG):</label>
-                    {{ form.iconfile }}<br><br>
-                    <!-- <input type="file" name="iconfile" id="iconfile" accept="image/png"> -->
-                    <div id="icon-preview"></div><br><br>
-                    <label for="{{ form.logofile.id_for_label }}">Custom App Logo (PNG):</label>
-                    {{ form.logofile }}<br><br>
-                    <!-- <input type="file" name="logofile" id="logofile" accept="image/png"> -->
-                    <div id="logo-preview"></div><br><br>
-                    <label for="{{ form.privacyfile.id_for_label }}">Custom Privacy Screen (Windows only, PNG):</label>
-                    {{ form.privacyfile }}<br><br>
-                    <div id="privacy-preview"></div><br><br>
+                    <label for="{{ form.primarySuffix.id_for_label }}">File suffix for primary client (optional, for example: gpbic):</label>
+                    {{ form.primarySuffix }}
+                    <div class="visual-field">
+                        <label for="{{ form.iconfile.id_for_label }}">Custom App Icon (square PNG):</label>
+                        {{ form.iconfile }}
+                        <div id="icon-preview" class="visual-preview"></div>
+                    </div>
+                    <div class="visual-field">
+                        <label for="{{ form.logofile.id_for_label }}">Custom App Logo (PNG):</label>
+                        {{ form.logofile }}
+                        <div id="logo-preview" class="visual-preview"></div>
+                    </div>
                     <div id="batch-branding">
                         <h3>Additional branded clients</h3>
                         <p>They inherit all settings and primary images unless you select their own app icon, logo or Windows privacy screen.</p>
                         <div id="extra-brands"></div>
                         <button type="button" id="add-brand"><i class="fas fa-plus"></i> Add another client</button>
-                    </div><br><br>
+                    </div>
+                    <div class="visual-field">
+                        <label for="{{ form.privacyfile.id_for_label }}">Custom Privacy Screen (Windows only, PNG):</label>
+                        {{ form.privacyfile }}
+                        <div id="privacy-preview" class="visual-preview"></div>
+                    </div>
                     <label for="{{ form.theme.id_for_label }}">Theme:</label>
                     {{ form.theme }} {{ form.themeDorO }} *Default sets the theme but allows the client to change it, Override sets the theme permanently.<br><br>
             </div>

@@ -198,13 +198,20 @@ class GeneratorPageTests(SimpleTestCase):
         self.assertContains(response, 'id="id_telegramNotifications"')
         self.assertFalse(response.context['form'].fields['telegramNotifications'].initial)
         self.assertContains(response, 'id="id_primarySuffix"')
+        self.assertLess(
+            response.content.index(b'> Visual</h2>'),
+            response.content.index(b'id="id_primarySuffix"'),
+        )
         self.assertContains(response, 'class="header-company-logo"')
+        self.assertContains(response, 'height: 38px;')
         self.assertContains(response, 'href="https://mb-nn.ru"')
         self.assertContains(response, 'extra_privacyfile_')
         self.assertContains(response, 'Custom App Icon (square PNG):', count=2)
         self.assertContains(response, 'Custom App Logo (PNG):', count=2)
         self.assertContains(response, 'Custom Privacy Screen (Windows only, PNG):', count=2)
         self.assertContains(response, 'privacy: privacyPreview')
+        self.assertContains(response, '#batch-launch-status:empty')
+        self.assertContains(response, 'class="visual-preview"', count=3)
 
     def test_company_logo_is_served(self):
         response = self.client.get('/brand-logo')
