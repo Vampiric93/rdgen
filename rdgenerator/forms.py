@@ -1,11 +1,66 @@
 from django import forms
+from django.core.cache import cache
 from PIL import Image
+import re
+import requests
+
+
+FALLBACK_RUSTDESK_VERSIONS = [
+    '1.4.9', '1.4.8', '1.4.7', '1.4.6', '1.4.5',
+    '1.4.4', '1.4.3', '1.4.2', '1.4.1', '1.4.0',
+]
+RUSTDESK_RELEASES_URL = 'https://api.github.com/repos/rustdesk/rustdesk/releases?per_page=100'
+RUSTDESK_VERSION_CACHE_KEY = 'rustdesk-stable-version-choices-v1'
+SEMVER_TAG = re.compile(r'^\d+\.\d+\.\d+$')
+
+
+def get_rustdesk_version_choices():
+    cached = cache.get(RUSTDESK_VERSION_CACHE_KEY)
+    if cached:
+        return cached
+
+    discovered = []
+    try:
+        response = requests.get(
+            RUSTDESK_RELEASES_URL,
+            headers={
+                'Accept': 'application/vnd.github+json',
+                'User-Agent': 'RDGen-version-selector',
+            },
+            timeout=3,
+        )
+        response.raise_for_status()
+        releases = response.json()
+        if not isinstance(releases, list):
+            raise ValueError('Unexpected GitHub releases response')
+        discovered = [
+            release.get('tag_name', '')
+            for release in releases
+            if isinstance(release, dict)
+            if not release.get('draft')
+            and not release.get('prerelease')
+            and SEMVER_TAG.fullmatch(release.get('tag_name', ''))
+        ]
+    except (requests.RequestException, ValueError, TypeError):
+        # The generator must remain usable if GitHub is temporarily unavailable.
+        pass
+
+    versions = set(discovered)
+    versions.update(FALLBACK_RUSTDESK_VERSIONS)
+    ordered_versions = sorted(
+        versions,
+        key=lambda version: tuple(int(part) for part in version.split('.')),
+        reverse=True,
+    )
+    choices = [('master', 'nightly')] + [(version, version) for version in ordered_versions]
+    cache.set(RUSTDESK_VERSION_CACHE_KEY, choices, 60 * 60)
+    return choices
 
 class GenerateForm(forms.Form):
     sh_secret_field = forms.CharField(required=False)
     #Platform
     platform = forms.ChoiceField(choices=[('windows','Windows 64Bit'),('windows-x86','Windows 32Bit'),('linux','Linux'),('android','Android'),('macos','macOS')], initial='windows')
-    version = forms.ChoiceField(choices=[('master','nightly'),('1.4.9','1.4.9'),('1.4.8','1.4.8'),('1.4.7','1.4.7'),('1.4.6','1.4.6'),('1.4.5','1.4.5'),('1.4.4','1.4.4'),('1.4.3','1.4.3'),('1.4.2','1.4.2'),('1.4.1','1.4.1'),('1.4.0','1.4.0')], initial='1.4.9')
+    version = forms.ChoiceField(choices=[('master', 'nightly')], initial='1.4.9')
     help_text="'master' is the development version (nightly build) with the latest features but may be less stable"
     delayFix = forms.BooleanField(initial=True, required=False)
 
@@ -84,6 +139,14 @@ class GenerateForm(forms.Form):
     #custom added features
     xOffline = forms.BooleanField(initial=False, required=False)
     removeNewVersionNotif = forms.BooleanField(initial=False, required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        choices = get_rustdesk_version_choices()
+        self.fields['version'].choices = choices
+        stable_versions = [value for value, _label in choices if value != 'master']
+        if stable_versions:
+            self.fields['version'].initial = stable_versions[0]
 
     def clean_iconfile(self):
         print("checking icon")

@@ -1,12 +1,12 @@
 import json
 from django.http import JsonResponse
 from django.conf import settings as _settings
+from .forms import get_rustdesk_version_choices
 from .views import generate_custom_client, _get_run_status
 
 
 # Field validation constraints (mirrored from GenerateForm)
 PLATFORM_CHOICES = ['windows', 'windows-x86', 'linux', 'android', 'macos']
-VERSION_CHOICES = ['master', '1.4.9', '1.4.8', '1.4.7', '1.4.6', '1.4.5', '1.4.4', '1.4.3', '1.4.2', '1.4.1', '1.4.0']
 DIRECTION_CHOICES = ['incoming', 'outgoing', 'both']
 INSTALLATION_CHOICES = ['installationY', 'installationN']
 SETTINGS_CHOICES = ['settingsY', 'settingsN']
@@ -53,9 +53,12 @@ def validate_generate_params(data):
         cleaned['exename'] = exename
 
     # Choice fields
+    version_choices = [value for value, _label in get_rustdesk_version_choices()]
+    stable_versions = [value for value in version_choices if value != 'master']
+    default_version = stable_versions[0] if stable_versions else 'master'
     choice_validations = {
         'platform': (PLATFORM_CHOICES, 'windows'),
-        'version': (VERSION_CHOICES, '1.4.9'),
+        'version': (version_choices, default_version),
         'installation': (INSTALLATION_CHOICES, 'installationY'),
         'settings': (SETTINGS_CHOICES, 'settingsY'),
         'theme': (THEME_CHOICES, 'system'),

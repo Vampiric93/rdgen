@@ -92,6 +92,15 @@
         .platform-icon:hover, .platform-icon.active {
             color: #2e52f7;
         }
+        .platform-selection-help {
+            color: #9ea7b3;
+            margin: -8px 0 12px;
+        }
+        #batch-launch-status {
+            color: #8fc7ff;
+            margin-top: 10px;
+            min-height: 1.2em;
+        }
         .text-64 {
             font-size: 0.5em; 
             font-weight: bold;
@@ -264,13 +273,15 @@
                     <i class="fab fa-android platform-icon" data-platform="android"></i>
                     <i class="fab fa-apple platform-icon" data-platform="macos"></i>
                 </div>
-                <select name="platform" id="id_platform">
+                <div class="platform-selection-help">Click platform icons to select one or more builds.</div>
+                <select name="platform" id="id_platform" multiple size="5">
                     <option value="windows" selected>Windows 64Bit</option>
                     <option value="windows-x86">Windows 32Bit</option>
                     <option value="linux">Linux</option>
                     <option value="android">Android</option>
                     <option value="macos">macOS</option>
                 </select>
+                <div id="batch-launch-status" aria-live="polite"></div>
                 <label for="{{ form.version.id_for_label }}">Rustdesk Version:</label>
                 {{ form.version }}
                 {% if form.version.help_text %}
@@ -441,9 +452,39 @@
             document.getElementById('extra-brands').appendChild(card);
         }
 
+        const platformSelect = document.getElementById('id_platform');
+
+        function getSelectedPlatforms() {
+            return Array.from(platformSelect.selectedOptions, option => option.value);
+        }
+
+        function syncPlatformIcons() {
+            const selected = new Set(getSelectedPlatforms());
+            document.querySelectorAll('.platform-icon').forEach(icon => {
+                icon.classList.toggle('active', selected.has(icon.dataset.platform));
+            });
+        }
+
+        function setSelectedPlatforms(platforms) {
+            const requested = new Set(Array.isArray(platforms) ? platforms : [platforms]);
+            let selectedCount = 0;
+            Array.from(platformSelect.options).forEach(option => {
+                option.selected = requested.has(option.value);
+                if (option.selected) {
+                    selectedCount += 1;
+                }
+            });
+            if (selectedCount === 0) {
+                platformSelect.options[0].selected = true;
+            }
+            syncPlatformIcons();
+            updateBatchBrandingVisibility();
+        }
+
         function updateBatchBrandingVisibility() {
-            const platform = document.getElementById('id_platform').value;
-            const enabled = ['windows', 'windows-x86', 'macos'].includes(platform);
+            const platforms = getSelectedPlatforms();
+            const brandingPlatforms = ['windows', 'windows-x86', 'macos'];
+            const enabled = platforms.length > 0 && platforms.every(platform => brandingPlatforms.includes(platform));
             document.getElementById('batch-branding').style.display = enabled ? 'block' : 'none';
             document.querySelectorAll('#extra-brands input').forEach(input => input.disabled = !enabled);
         }
@@ -451,14 +492,26 @@
         document.getElementById('add-brand').addEventListener('click', () => addBrand());
         document.querySelectorAll('.platform-icon').forEach(icon => {
             icon.addEventListener('click', function() {
-                document.querySelectorAll('.platform-icon').forEach(i => i.classList.remove('active'));
-                this.classList.add('active');
-                document.getElementById('id_platform').value = this.dataset.platform;
+                const option = Array.from(platformSelect.options).find(item => item.value === this.dataset.platform);
+                if (!option) {
+                    return;
+                }
+                if (option.selected && getSelectedPlatforms().length === 1) {
+                    return;
+                }
+                option.selected = !option.selected;
+                syncPlatformIcons();
                 updateBatchBrandingVisibility();
             });
         });
-        document.getElementById('id_platform').addEventListener('change', updateBatchBrandingVisibility);
-        updateBatchBrandingVisibility();
+        platformSelect.addEventListener('change', function() {
+            if (getSelectedPlatforms().length === 0) {
+                platformSelect.options[0].selected = true;
+            }
+            syncPlatformIcons();
+            updateBatchBrandingVisibility();
+        });
+        setSelectedPlatforms(['windows']);
         document.getElementById("{{ form.iconfile.id_for_label }}").addEventListener('change', function(event) {
             previewImage(event.target, 'icon-preview');
         });
@@ -593,7 +646,7 @@
             const formDataObj = new FormData(form);  // Create a FormData object
 
             formDataObj.forEach((value, key) => {
-                if (key === 'direction') {
+                if (key === 'direction' || key === 'platform') {
                     if (!Array.isArray(formData[key])) {
                         formData[key] = [];
                     }
@@ -606,7 +659,9 @@
             // 2. Handle select elements separately (more reliable):
             const selectElements = form.querySelectorAll('select');
             selectElements.forEach(select => {
-                formData[select.name] = select.value;
+                formData[select.name] = select.multiple
+                    ? Array.from(select.selectedOptions, option => option.value)
+                    : select.value;
             });
 
             // 3. Handle checkboxes and radio buttons (important!):
@@ -716,6 +771,11 @@
                                 if (key === 'extra_brands') {
                                     continue;
                                 }
+                                if (key === 'platform') {
+                                    // Old configuration files contain a string; new files contain an array.
+                                    setSelectedPlatforms(Array.isArray(formData[key]) ? formData[key] : [formData[key]]);
+                                    continue;
+                                }
                                 // More robust selector: checks for name OR id
                                 const elements = document.querySelectorAll(`[name="${key}"], [id="${key}"]`);
 
@@ -751,6 +811,8 @@
                                     });
                                 }
                             }
+                            syncPlatformIcons();
+                            updateBatchBrandingVisibility();
                         } catch (error) {
                             alert("Error loading data. Invalid JSON file.");
                         }
@@ -759,6 +821,87 @@
                 }
             });
         }
+
+        function writeBuildResponse(targetWindow, platform, response) {
+            const contentType = response.contentType || '';
+            let content = response.body;
+            if (!contentType.includes('text/html')) {
+                const escaped = content
+                    .replaceAll('&', '&amp;')
+                    .replaceAll('<', '&lt;')
+                    .replaceAll('>', '&gt;');
+                content = `<!DOCTYPE html><html><body style="background:#111;color:#eee;font-family:sans-serif;padding:30px">
+                    <h2>${platform} build could not be started</h2><pre>${escaped}</pre></body></html>`;
+            }
+            targetWindow.document.open();
+            targetWindow.document.write(content);
+            targetWindow.document.close();
+        }
+
+        document.getElementById('myForm').addEventListener('submit', async function(event) {
+            const platforms = getSelectedPlatforms();
+            if (platforms.length <= 1) {
+                return;
+            }
+
+            event.preventDefault();
+            const buildWindows = platforms.map(platform => ({
+                platform,
+                target: window.open('about:blank', '_blank')
+            }));
+            const blocked = buildWindows.some(buildWindow => !buildWindow.target);
+            if (blocked) {
+                buildWindows.forEach(buildWindow => {
+                    if (buildWindow.target) {
+                        buildWindow.target.close();
+                    }
+                });
+                alert('The browser blocked build tabs. Allow pop-ups for this site and click Generate again. No builds were started.');
+                return;
+            }
+
+            buildWindows.forEach(({platform, target}) => {
+                target.document.write(`<!DOCTYPE html><html><body style="background:#111;color:#eee;font-family:sans-serif;padding:30px">
+                    <h2>Starting ${platform} build...</h2><p>Please keep this tab open.</p></body></html>`);
+                target.document.close();
+            });
+
+            const submitButton = this.querySelector('button[type="submit"]');
+            const status = document.getElementById('batch-launch-status');
+            submitButton.disabled = true;
+            status.textContent = `Starting ${platforms.length} builds...`;
+
+            const requests = buildWindows.map(async ({platform, target}) => {
+                try {
+                    const requestData = new FormData(this);
+                    requestData.delete('platform');
+                    requestData.append('platform', platform);
+                    const httpResponse = await fetch(this.action, {
+                        method: 'POST',
+                        body: requestData,
+                        credentials: 'same-origin'
+                    });
+                    return {
+                        platform,
+                        target,
+                        body: await httpResponse.text(),
+                        contentType: httpResponse.headers.get('content-type') || ''
+                    };
+                } catch (error) {
+                    return {
+                        platform,
+                        target,
+                        body: `Network error: ${error.message}`,
+                        contentType: 'text/plain'
+                    };
+                }
+            });
+
+            const responses = await Promise.all(requests);
+            responses.forEach(response => writeBuildResponse(response.target, response.platform, response));
+            status.textContent = `${platforms.length} builds started in separate tabs.`;
+            submitButton.disabled = false;
+        });
     </script>
 </body>
 </html>
