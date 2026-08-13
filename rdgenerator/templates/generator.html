@@ -393,16 +393,16 @@
                         {{ form.logofile }}
                         <div id="logo-preview" class="visual-preview"></div>
                     </div>
+                    <div class="visual-field">
+                        <label for="{{ form.privacyfile.id_for_label }}">Custom Privacy Screen (Windows only, PNG):</label>
+                        {{ form.privacyfile }}
+                        <div id="privacy-preview" class="visual-preview"></div>
+                    </div>
                     <div id="batch-branding">
                         <h3>Additional branded clients</h3>
                         <p>They inherit all settings and primary images unless you select their own app icon, logo or Windows privacy screen.</p>
                         <div id="extra-brands"></div>
                         <button type="button" id="add-brand"><i class="fas fa-plus"></i> Add another client</button>
-                    </div>
-                    <div class="visual-field">
-                        <label for="{{ form.privacyfile.id_for_label }}">Custom Privacy Screen (Windows only, PNG):</label>
-                        {{ form.privacyfile }}
-                        <div id="privacy-preview" class="visual-preview"></div>
                     </div>
                     <label for="{{ form.theme.id_for_label }}">Theme:</label>
                     {{ form.theme }} {{ form.themeDorO }} *Default sets the theme but allows the client to change it, Override sets the theme permanently.<br><br>

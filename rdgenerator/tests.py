@@ -213,6 +213,10 @@ class GeneratorPageTests(SimpleTestCase):
         self.assertContains(response, 'privacy: privacyPreview')
         self.assertContains(response, '#batch-launch-status:empty')
         self.assertContains(response, 'class="visual-preview"', count=3)
+        self.assertLess(
+            response.content.index(b'id="id_privacyfile"'),
+            response.content.index(b'id="add-brand"'),
+        )
 
     def test_company_logo_is_served(self):
         response = self.client.get('/brand-logo')
