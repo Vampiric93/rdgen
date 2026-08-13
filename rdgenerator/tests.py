@@ -204,6 +204,7 @@ class GeneratorPageTests(SimpleTestCase):
         )
         self.assertContains(response, 'class="header-company-logo"')
         self.assertContains(response, 'height: 38px;')
+        self.assertContains(response, 'align-items: center;')
         self.assertContains(response, 'href="https://mb-nn.ru"')
         self.assertContains(response, 'extra_privacyfile_')
         self.assertContains(response, 'Custom App Icon (square PNG):', count=2)
