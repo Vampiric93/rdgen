@@ -98,6 +98,7 @@ class RustDeskVersionChoiceTests(SimpleTestCase):
 
         self.assertEqual(choices[:2], [('master', 'nightly'), ('1.5.0', '1.5.0')])
         self.assertIn(('1.4.9', '1.4.9'), choices)
+        self.assertEqual(len(choices), 11)
         self.assertEqual(form.fields['version'].initial, '1.5.0')
 
     @patch('rdgenerator.forms.requests.get', side_effect=RequestException('offline'))

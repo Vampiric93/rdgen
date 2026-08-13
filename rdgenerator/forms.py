@@ -52,7 +52,9 @@ def get_rustdesk_version_choices():
         key=lambda version: tuple(int(part) for part in version.split('.')),
         reverse=True,
     )
-    choices = [('master', 'nightly')] + [(version, version) for version in ordered_versions]
+    choices = [('master', 'nightly')] + [
+        (version, version) for version in ordered_versions[:10]
+    ]
     cache.set(RUSTDESK_VERSION_CACHE_KEY, choices, 60 * 60)
     return choices
 
