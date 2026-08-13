@@ -625,8 +625,18 @@ jobs:
 
       - name: sign dlls
         shell: bash
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           if [ "${SIGNING_ENABLED:-false}" = "true" ]; then
+            if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
+              curl --fail -sS --connect-timeout 5 --max-time 10 \
+                -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+                --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+                --data-urlencode "text=Windows x64: требуется подпись DLL/EXE" >/dev/null \
+                || echo "::warning::Failed to send Telegram signing notification"
+            fi
             curl --fail-with-body -sS -X POST --data-binary "@./unsigned-runtime-files.zip" \
               -H "Content-Type: application/zip" \
               -H "X-API-KEY: ${SIGN_API_KEY_EFFECTIVE}" \
@@ -661,8 +671,18 @@ jobs:
 
       - name: sign exe and msi
         shell: bash
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           if [ "${SIGNING_ENABLED:-false}" = "true" ]; then
+            if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
+              curl --fail -sS --connect-timeout 5 --max-time 10 \
+                -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+                --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+                --data-urlencode "text=Windows x64: требуется подпись EXE/MSI" >/dev/null \
+                || echo "::warning::Failed to send Telegram signing notification"
+            fi
             curl --fail-with-body -sS -X POST --data-binary "@./SignOutput/unsigned_files.zip" \
               -H "Content-Type: application/zip" \
               -H "X-API-KEY: ${SIGN_API_KEY_EFFECTIVE}" \
