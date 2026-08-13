@@ -107,6 +107,18 @@ class CustomServerTests(SimpleTestCase):
             self.assertEqual(common.read_text(encoding='utf-8'), 'https://api.example')
 
 
+class WindowsArtifactNamingTests(SimpleTestCase):
+    def test_all_windows_brands_use_underscore_before_direction(self):
+        scripts = Path(__file__).resolve().parents[1] / '.github' / 'scripts'
+        batch = (scripts / 'build-windows-brand-batch.ps1').read_text(encoding='utf-8')
+        x64 = (scripts / 'build-windows-variants.ps1').read_text(encoding='utf-8')
+        x86 = (scripts / 'build-windows-x86-variants.ps1').read_text(encoding='utf-8')
+
+        self.assertIn("$env:RDGEN_DIRECTION_SEPARATOR = '_'", batch)
+        self.assertIn("{ '_' } else { $env:RDGEN_DIRECTION_SEPARATOR }", x64)
+        self.assertIn("{ '_' } else { $env:RDGEN_DIRECTION_SEPARATOR }", x86)
+
+
 class RustDeskVersionChoiceTests(SimpleTestCase):
     def setUp(self):
         cache.delete(RUSTDESK_VERSION_CACHE_KEY)

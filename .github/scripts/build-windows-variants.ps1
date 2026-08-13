@@ -69,7 +69,7 @@ $fileName = $env:filename
 if ([string]::IsNullOrWhiteSpace($fileName)) {
     $fileName = 'rustdesk'
 }
-$directionSeparator = if ([string]::IsNullOrEmpty($env:RDGEN_DIRECTION_SEPARATOR)) { '-' } else { $env:RDGEN_DIRECTION_SEPARATOR }
+$directionSeparator = if ([string]::IsNullOrEmpty($env:RDGEN_DIRECTION_SEPARATOR)) { '_' } else { $env:RDGEN_DIRECTION_SEPARATOR }
 
 $originalExecutable = Join-Path $rustdeskDirectory 'rustdesk.exe'
 $applicationExecutable = Join-Path $rustdeskDirectory "$appName.exe"

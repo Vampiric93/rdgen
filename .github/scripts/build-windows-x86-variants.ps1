@@ -147,7 +147,7 @@ if ($invalidDirections.Count -gt 0) {
 
 $appName = if ([string]::IsNullOrWhiteSpace($env:appname)) { 'rustdesk' } else { $env:appname }
 $fileName = if ([string]::IsNullOrWhiteSpace($env:filename)) { 'rustdesk' } else { $env:filename }
-$directionSeparator = if ([string]::IsNullOrEmpty($env:RDGEN_DIRECTION_SEPARATOR)) { '-' } else { $env:RDGEN_DIRECTION_SEPARATOR }
+$directionSeparator = if ([string]::IsNullOrEmpty($env:RDGEN_DIRECTION_SEPARATOR)) { '_' } else { $env:RDGEN_DIRECTION_SEPARATOR }
 $originalExecutable = Join-Path $rustdeskDirectory 'rustdesk.exe'
 $applicationExecutable = Join-Path $rustdeskDirectory "$appName.exe"
 

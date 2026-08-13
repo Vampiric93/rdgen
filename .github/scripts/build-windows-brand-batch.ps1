@@ -19,7 +19,7 @@ for ($index = 0; $index -lt $brands.Count; $index++) {
     }
     Copy-Item -LiteralPath ([string]$brand.runtime) -Destination $activeRuntime -Recurse -Force
     $env:filename = [string]$brand.filename
-    $env:RDGEN_DIRECTION_SEPARATOR = if ($index -eq 0) { '-' } else { '_' }
+    $env:RDGEN_DIRECTION_SEPARATOR = '_'
 
     # Portable packages must not share one extraction directory. Otherwise
     # launching another brand can reuse the previously extracted executable,
