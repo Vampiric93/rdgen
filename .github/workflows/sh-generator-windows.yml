@@ -310,9 +310,30 @@ jobs:
         run: python --version
 
       - name: Setup NuGet
-        uses: NuGet/setup-nuget@v2
-        with:
-          nuget-version: 'latest'
+        shell: pwsh
+        run: |
+          $toolDir = 'C:\actions-runner\_local-cache\tools'
+          $nugetPath = Join-Path $toolDir 'nuget.exe'
+          New-Item -ItemType Directory -Path $toolDir -Force | Out-Null
+          if (-not (Test-Path -LiteralPath $nugetPath -PathType Leaf)) {
+            $downloadPath = "$nugetPath.download"
+            for ($attempt = 1; $attempt -le 3; $attempt++) {
+              try {
+                Write-Host "Downloading NuGet (attempt $attempt of 3)..."
+                Invoke-WebRequest 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe' `
+                  -OutFile $downloadPath -UseBasicParsing -ErrorAction Stop
+                Move-Item -LiteralPath $downloadPath -Destination $nugetPath -Force
+                break
+              } catch {
+                Remove-Item -LiteralPath $downloadPath -Force -ErrorAction SilentlyContinue
+                if ($attempt -eq 3) { throw }
+                Start-Sleep -Seconds (5 * $attempt)
+              }
+            }
+          }
+          $toolDir | Out-File $env:GITHUB_PATH -Encoding utf8 -Append
+          & $nugetPath help | Select-Object -First 1
+          if ($LASTEXITCODE -ne 0) { throw "NuGet validation failed with exit code $LASTEXITCODE" }
       
       - name: change appname to custom
         if: env.appname != 'rustdesk'
