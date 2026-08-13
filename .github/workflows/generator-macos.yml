@@ -83,7 +83,10 @@ jobs:
         shell: bash
         run: |
           cp ./.github/scripts/apply-client-branding.py "$RUNNER_TEMP/apply-client-branding.py"
+          cp ./.github/scripts/apply-custom-server.py "$RUNNER_TEMP/apply-custom-server.py"
           cp ./.github/scripts/prepare-macos-brands.py "$RUNNER_TEMP/prepare-macos-brands.py"
+          cp ./.github/patches/allowCustom.py "$RUNNER_TEMP/allowCustom.py"
+          cp ./.github/patches/removeSetupServerTip.diff "$RUNNER_TEMP/removeSetupServerTip.diff"
         
       - uses: actions/download-artifact@v4
         with:
@@ -175,16 +178,30 @@ jobs:
           sed -i '' -e "s|launchUrlString('https://rustdesk.com/privacy.html')|launchUrlString('${{ env.urlLink }}/privacy.html')|" ./flutter/lib/mobile/pages/settings_page.dart
           sed -i '' -e "s|https://rustdesk.com/privacy.html|${{ env.urlLink }}/privacy.html|" ./flutter/lib/desktop/pages/install_page.dart
 
+      - name: Apply custom server configuration
+        shell: bash
+        env:
+          RDGEN_SERVER: ${{ env.server }}
+          RDGEN_KEY: ${{ env.key }}
+          RDGEN_API_SERVER: ${{ env.apiServer }}
+        run: |
+          python3 "$RUNNER_TEMP/apply-custom-server.py" . \
+            --server "$RDGEN_SERVER" \
+            --key "$RDGEN_KEY" \
+            --api-server "$RDGEN_API_SERVER"
+          python3 "$RUNNER_TEMP/allowCustom.py"
+          git apply "$RUNNER_TEMP/removeSetupServerTip.diff"
+
       - name: change download link to custom
         if: env.downloadLink != 'https://rustdesk.com/download'
         continue-on-error: true
         shell: bash
         run: |
-          sed -i -e 's|https://rustdesk.com/download|${{ env.downloadLink }}|' ./flutter/lib/desktop/pages/desktop_home_page.dart
-          sed -i -e 's|https://rustdesk.com/download|${{ env.downloadLink }}|' ./flutter/lib/mobile/pages/connection_page.dart
-          sed -i -e 's|https://rustdesk.com/download|${{ env.downloadLink }}|' ./src/ui/index.tis
-          sed -i -e 's|&download_url|"${{ env.downloadLink }}"|' ./src/updater.rs
-          sed -i -e 's|$downloadUrl/$downloadFile|${{ env.downloadLink }}|' ./flutter/lib/desktop/widgets/update_progress.dart
+          sed -i '' -e 's|https://rustdesk.com/download|${{ env.downloadLink }}|' ./flutter/lib/desktop/pages/desktop_home_page.dart
+          sed -i '' -e 's|https://rustdesk.com/download|${{ env.downloadLink }}|' ./flutter/lib/mobile/pages/connection_page.dart
+          sed -i '' -e 's|https://rustdesk.com/download|${{ env.downloadLink }}|' ./src/ui/index.tis
+          sed -i '' -e 's|&download_url|"${{ env.downloadLink }}"|' ./src/updater.rs
+          sed -i '' -e 's|$downloadUrl/$downloadFile|${{ env.downloadLink }}|' ./flutter/lib/desktop/widgets/update_progress.dart
 
           # Update slogan
           #sed -i '' '/<key>NSHumanReadableCopyright<\/key>/{n;s/<string>.*<\/string>/<string>Copyright 2025 ${{ env.appname }}. All rights reserved.<\/string>/;}' ./flutter/macos/Runner/Info.plist
@@ -200,15 +217,6 @@ jobs:
           sed -i '' -e 's/("About RustDesk", "Over RustDesk")/("About RustDesk", "Over ${{ env.appname }}")/' ./src/lang/nl.rs
           sed -i '' -e 's/("About", "Over")/("About", "Over ${{ env.appname }}")/' ./src/lang/nl.rs
 
-          sed -i -e 's|rs-ny.rustdesk.com|${{ env.server }}|' ./libs/hbb_common/src/config.rs
-          sed -i -e 's|OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=|${{ env.key }}|' ./libs/hbb_common/src/config.rs
-          sed -i -e 's|https://admin.rustdesk.com|${{ env.apiServer }}|' ./src/common.rs
-          
-          wget https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/allowCustom.py
-          python allowCustom.py
-          wget https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/removeSetupServerTip.diff
-          git apply removeSetupServerTip.diff
-            
           # Update pubspec.yaml with proper YAML formatting
           cp ./flutter/pubspec.yaml ./flutter/pubspec.yaml.bak
           echo "  archive: ^3.6.1" > ./flutter/temp_dependency.txt

@@ -1,5 +1,8 @@
 from io import BytesIO
 import base64
+import importlib.util
+from pathlib import Path
+import tempfile
 from unittest.mock import Mock, patch
 
 from django.core.cache import cache
@@ -10,6 +13,14 @@ from requests import RequestException
 
 from .forms import GenerateForm, RUSTDESK_VERSION_CACHE_KEY, get_rustdesk_version_choices
 from .views import _collect_extra_brands, _sanitize_brand_suffix, _sanitize_output_name
+
+
+def load_apply_custom_server():
+    script_path = Path(__file__).resolve().parents[1] / '.github' / 'scripts' / 'apply-custom-server.py'
+    spec = importlib.util.spec_from_file_location('apply_custom_server', script_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.apply_custom_server
 
 
 def png_file(name, size=(64, 64)):
@@ -73,6 +84,27 @@ class BatchBrandingTests(SimpleTestCase):
         brands = _collect_extra_brands(request)
         self.assertTrue(brands[0]['iconfile'].startswith('data:image/png;base64,'))
         self.assertTrue(brands[0]['logofile'].startswith('data:image/png;base64,'))
+
+
+class CustomServerTests(SimpleTestCase):
+    def test_custom_server_values_are_applied(self):
+        apply_custom_server = load_apply_custom_server()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / 'libs' / 'hbb_common' / 'src' / 'config.rs'
+            common = root / 'src' / 'common.rs'
+            config.parent.mkdir(parents=True)
+            common.parent.mkdir(parents=True)
+            config.write_text(
+                'rs-ny.rustdesk.com\nOeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=',
+                encoding='utf-8',
+            )
+            common.write_text('https://admin.rustdesk.com', encoding='utf-8')
+
+            apply_custom_server(root, 'host.example', 'custom-key', 'https://api.example')
+
+            self.assertEqual(config.read_text(encoding='utf-8'), 'host.example\ncustom-key')
+            self.assertEqual(common.read_text(encoding='utf-8'), 'https://api.example')
 
 
 class RustDeskVersionChoiceTests(SimpleTestCase):
