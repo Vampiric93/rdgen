@@ -1,0 +1,38 @@
+name: Telegram signing notification
+
+on:
+  workflow_dispatch:
+    inputs:
+      architecture:
+        description: Windows architecture
+        required: true
+        type: choice
+        options:
+          - x64
+          - x86
+      artifacts:
+        description: Files awaiting signature
+        required: true
+        type: choice
+        options:
+          - DLL/EXE
+          - EXE/MSI
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Telegram notification
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ARCHITECTURE: ${{ inputs.architecture }}
+          ARTIFACTS: ${{ inputs.artifacts }}
+        run: |
+          test -n "$TELEGRAM_BOT_TOKEN"
+          test -n "$TELEGRAM_CHAT_ID"
+          curl --fail-with-body -sS --connect-timeout 5 --max-time 10 \
+            -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=Windows ${ARCHITECTURE}: требуется подпись ${ARTIFACTS}" \
+            >/dev/null
