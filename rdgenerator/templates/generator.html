@@ -38,6 +38,17 @@
             text-align: center;
             grid-column: 1 / -1;
         }
+        .header-company-link {
+            display: inline-flex;
+            align-items: center;
+            vertical-align: middle;
+            margin-right: 0.18em;
+        }
+        .header-company-logo {
+            display: block;
+            width: auto;
+            height: 0.72em;
+        }
         h2 {
             color: #fff;
             margin-top: 0;
@@ -234,7 +245,7 @@
       </style>
 </head>
 <body>
-    <h1><i class="fas fa-cogs"></i> RustDesk Custom Client Builder</h1>
+    <h1><a class="header-company-link" href="https://mb-nn.ru" target="_blank" rel="noopener noreferrer" aria-label="MB Grup LLC"><img class="header-company-logo" src="/brand-logo" alt="MB Grup LLC"></a>RustDesk Custom Client Builder</h1>
     <form id="myForm" action="/generator" method="post" enctype="multipart/form-data">
         <div class="save-load-section-container">
             <div class="section">
@@ -299,6 +310,8 @@
                 <h2><i class="fas fa-sliders-h"></i> General</h2>
                     <label for="{{ form.exename.id_for_label }}">Name of the configuration (no spaces or special characters, English characters only):</label>
                     {{ form.exename }}<span id="filenameError" class="error"></span><br><br>
+                    <label for="{{ form.primarySuffix.id_for_label }}">File suffix for primary client (optional, for example: gpbic):</label>
+                    {{ form.primarySuffix }}<br><br>
                     <label for="{{ form.appname.id_for_label }}">Custom Application Name (leave blank to use default):</label>
                     {{ form.appname }}<br><br>
                     <label for="{{ form.direction.id_for_label }}">Connection Type:</label>
@@ -351,24 +364,23 @@
                     {{ form.iconbase64.as_hidden }}
                     {{ form.logobase64.as_hidden }}
                     {{ form.privacybase64.as_hidden }}
-                    <label for="{{ form.iconfile.id_for_label }}">Custom App Icon (in .png format)</label>
+                    <label for="{{ form.iconfile.id_for_label }}">Custom App Icon (square PNG):</label>
                     {{ form.iconfile }}<br><br>
                     <!-- <input type="file" name="iconfile" id="iconfile" accept="image/png"> -->
                     <div id="icon-preview"></div><br><br>
-                    <label for="{{ form.logofile.id_for_label }}">Custom App Logo (in .png format)</label>
+                    <label for="{{ form.logofile.id_for_label }}">Custom App Logo (PNG):</label>
                     {{ form.logofile }}<br><br>
                     <!-- <input type="file" name="logofile" id="logofile" accept="image/png"> -->
                     <div id="logo-preview"></div><br><br>
+                    <label for="{{ form.privacyfile.id_for_label }}">Custom Privacy Screen (Windows only, PNG):</label>
+                    {{ form.privacyfile }}<br><br>
+                    <div id="privacy-preview"></div><br><br>
                     <div id="batch-branding">
                         <h3>Additional branded clients</h3>
-                        <p>They inherit all settings and differ only by output name, app icon and logo.</p>
+                        <p>They inherit all settings and primary images unless you select their own app icon, logo or Windows privacy screen.</p>
                         <div id="extra-brands"></div>
                         <button type="button" id="add-brand"><i class="fas fa-plus"></i> Add another client</button>
                     </div><br><br>
-                    <label for="{{ form.privacyfile.id_for_label }}">Custom Privacy Screen (in .png format)</label>
-                    {{ form.privacyfile }}<br><br>
-                    <!-- <input type="file" name="iconfile" id="iconfile" accept="image/png"> -->
-                    <div id="privacy-preview"></div><br><br>
                     <label for="{{ form.theme.id_for_label }}">Theme:</label>
                     {{ form.theme }} {{ form.themeDorO }} *Default sets the theme but allows the client to change it, Override sets the theme permanently.<br><br>
             </div>
@@ -425,14 +437,18 @@
                 </div>
                 <label for="extra_suffix_${id}">Optional file suffix (empty = automatic number):</label>
                 <input type="text" id="extra_suffix_${id}" name="extra_suffix_${id}" placeholder="secondbrand">
-                <label for="extra_iconfile_${id}">App icon (square PNG):</label>
+                <label for="extra_iconfile_${id}">Custom App Icon (square PNG):</label>
                 <input type="file" id="extra_iconfile_${id}" name="extra_iconfile_${id}" accept="image/png">
                 <input type="hidden" name="extra_iconbase64_${id}" value="">
                 <div class="extra-icon-preview"></div><br>
-                <label for="extra_logofile_${id}">App logo (PNG):</label>
+                <label for="extra_logofile_${id}">Custom App Logo (PNG):</label>
                 <input type="file" id="extra_logofile_${id}" name="extra_logofile_${id}" accept="image/png">
                 <input type="hidden" name="extra_logobase64_${id}" value="">
-                <div class="extra-logo-preview"></div>
+                <div class="extra-logo-preview"></div><br>
+                <label for="extra_privacyfile_${id}">Custom Privacy Screen (Windows only, PNG):</label>
+                <input type="file" id="extra_privacyfile_${id}" name="extra_privacyfile_${id}" accept="image/png">
+                <input type="hidden" name="extra_privacybase64_${id}" value="">
+                <div class="extra-privacy-preview"></div>
             `;
             card.querySelector(`#extra_suffix_${id}`).value = savedBrand.suffix || '';
             card.querySelector('.remove-brand').addEventListener('click', () => card.remove());
@@ -444,6 +460,10 @@
                 card.querySelector(`[name="extra_logobase64_${id}"]`).value = '';
                 previewImageElement(event.target, card.querySelector('.extra-logo-preview'));
             });
+            card.querySelector(`#extra_privacyfile_${id}`).addEventListener('change', event => {
+                card.querySelector(`[name="extra_privacybase64_${id}"]`).value = '';
+                previewImageElement(event.target, card.querySelector('.extra-privacy-preview'));
+            });
             if (savedBrand.icon) {
                 card.querySelector(`[name="extra_iconbase64_${id}"]`).value = savedBrand.icon;
                 card.querySelector('.extra-icon-preview').innerHTML = `<img src="${savedBrand.icon}" style="max-width: 300px; max-height: 60px;">`;
@@ -451,6 +471,10 @@
             if (savedBrand.logo) {
                 card.querySelector(`[name="extra_logobase64_${id}"]`).value = savedBrand.logo;
                 card.querySelector('.extra-logo-preview').innerHTML = `<img src="${savedBrand.logo}" style="max-width: 300px; max-height: 60px;">`;
+            }
+            if (savedBrand.privacy) {
+                card.querySelector(`[name="extra_privacybase64_${id}"]`).value = savedBrand.privacy;
+                card.querySelector('.extra-privacy-preview').innerHTML = `<img src="${savedBrand.privacy}" style="max-width: 300px; max-height: 60px;">`;
             }
             document.getElementById('extra-brands').appendChild(card);
         }
@@ -719,10 +743,12 @@
                 const suffix = card.querySelector('input[name^="extra_suffix_"]').value;
                 const iconPreview = card.querySelector('.extra-icon-preview img');
                 const logoPreview = card.querySelector('.extra-logo-preview img');
+                const privacyPreview = card.querySelector('.extra-privacy-preview img');
                 formData.extra_brands.push({
                     suffix: suffix,
                     icon: iconPreview && iconPreview.src.startsWith('data:image/png;base64') ? iconPreview.src : '',
-                    logo: logoPreview && logoPreview.src.startsWith('data:image/png;base64') ? logoPreview.src : ''
+                    logo: logoPreview && logoPreview.src.startsWith('data:image/png;base64') ? logoPreview.src : '',
+                    privacy: privacyPreview && privacyPreview.src.startsWith('data:image/png;base64') ? privacyPreview.src : ''
                 });
             }
             Object.keys(formData).forEach(key => {

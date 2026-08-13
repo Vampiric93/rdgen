@@ -12,7 +12,7 @@ from PIL import Image
 from requests import RequestException
 
 from .forms import GenerateForm, RUSTDESK_VERSION_CACHE_KEY, get_rustdesk_version_choices
-from .views import _collect_extra_brands, _sanitize_brand_suffix, _sanitize_output_name
+from .views import _brand_filename, _collect_extra_brands, _sanitize_brand_suffix, _sanitize_output_name
 
 
 def load_apply_custom_server():
@@ -41,6 +41,8 @@ class BatchBrandingTests(SimpleTestCase):
     def test_output_name_is_sanitized(self):
         self.assertEqual(_sanitize_output_name('Second Brand!'), 'Second_Brand_')
         self.assertEqual(_sanitize_brand_suffix(''), '')
+        self.assertEqual(_brand_filename('Megabyte', ''), 'Megabyte')
+        self.assertEqual(_brand_filename('Megabyte', 'gpbic'), 'Megabyte_gpbic')
         with self.assertRaises(ValueError):
             _sanitize_output_name('Клиент')
 
@@ -50,10 +52,12 @@ class BatchBrandingTests(SimpleTestCase):
             'extra_suffix_7': 'secondbrand',
             'extra_iconfile_7': png_file('icon.png'),
             'extra_logofile_7': png_file('logo.png', (200, 60)),
+            'extra_privacyfile_7': png_file('privacy.png', (320, 180)),
         })
         brands = _collect_extra_brands(request)
         self.assertEqual(len(brands), 1)
         self.assertEqual(brands[0]['suffix'], 'secondbrand')
+        self.assertEqual(brands[0]['privacyfile'].name, 'privacy.png')
 
     def test_empty_suffix_uses_brand_number(self):
         request = self.factory.post('/generator', {
@@ -80,10 +84,23 @@ class BatchBrandingTests(SimpleTestCase):
             'extra_suffix_2': 'imported',
             'extra_iconbase64_2': png_data_uri(),
             'extra_logobase64_2': png_data_uri((200, 60)),
+            'extra_privacybase64_2': png_data_uri((320, 180)),
         })
         brands = _collect_extra_brands(request)
         self.assertTrue(brands[0]['iconfile'].startswith('data:image/png;base64,'))
         self.assertTrue(brands[0]['logofile'].startswith('data:image/png;base64,'))
+        self.assertTrue(brands[0]['privacyfile'].startswith('data:image/png;base64,'))
+
+    def test_extra_brand_can_customize_only_privacy_screen(self):
+        request = self.factory.post('/generator', {
+            'extra_brand_id': '4',
+            'extra_privacyfile_4': png_file('privacy.png', (320, 180)),
+        })
+        brands = _collect_extra_brands(request)
+        self.assertEqual(brands[0]['suffix'], '2')
+        self.assertIsNone(brands[0]['iconfile'])
+        self.assertIsNone(brands[0]['logofile'])
+        self.assertEqual(brands[0]['privacyfile'].name, 'privacy.png')
 
 
 class CustomServerTests(SimpleTestCase):
@@ -117,6 +134,20 @@ class WindowsArtifactNamingTests(SimpleTestCase):
         self.assertIn("$env:RDGEN_DIRECTION_SEPARATOR = '_'", batch)
         self.assertIn("{ '_' } else { $env:RDGEN_DIRECTION_SEPARATOR }", x64)
         self.assertIn("{ '_' } else { $env:RDGEN_DIRECTION_SEPARATOR }", x86)
+
+    def test_privacy_helper_is_selected_per_brand(self):
+        root = Path(__file__).resolve().parents[1]
+        prepare = (root / '.github' / 'scripts' / 'prepare-windows-brand-runtimes.ps1').read_text(encoding='utf-8')
+        build = (root / '.github' / 'scripts' / 'build-windows-privacy-helpers.ps1').read_text(encoding='utf-8')
+        x64 = (root / '.github' / 'workflows' / 'sh-generator-windows.yml').read_text(encoding='utf-8')
+        x86 = (root / '.github' / 'workflows' / 'generator-windows-x86.yml').read_text(encoding='utf-8')
+
+        self.assertIn("Join-Path $repositoryRoot '.rdgen-topmost'", prepare)
+        self.assertIn("Join-Path (Join-Path $privacyHelperRoot $index) 'WindowInjection.dll'", prepare)
+        self.assertIn("$brand.PSObject.Properties.Name -contains 'privacy'", build)
+        self.assertIn("Get-FileHash -LiteralPath $privacyPath", build)
+        self.assertIn('path: "./.rdgen-topmost"', x64)
+        self.assertIn('path: ./.rdgen-topmost', x86)
 
 
 class RustDeskVersionChoiceTests(SimpleTestCase):
@@ -166,3 +197,16 @@ class GeneratorPageTests(SimpleTestCase):
         self.assertContains(response, "requestData.delete('platform')")
         self.assertContains(response, 'id="id_telegramNotifications"')
         self.assertFalse(response.context['form'].fields['telegramNotifications'].initial)
+        self.assertContains(response, 'id="id_primarySuffix"')
+        self.assertContains(response, 'class="header-company-logo"')
+        self.assertContains(response, 'href="https://mb-nn.ru"')
+        self.assertContains(response, 'extra_privacyfile_')
+        self.assertContains(response, 'Custom App Icon (square PNG):', count=2)
+        self.assertContains(response, 'Custom App Logo (PNG):', count=2)
+        self.assertContains(response, 'Custom Privacy Screen (Windows only, PNG):', count=2)
+        self.assertContains(response, 'privacy: privacyPreview')
+
+    def test_company_logo_is_served(self):
+        response = self.client.get('/brand-logo')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'image/png')

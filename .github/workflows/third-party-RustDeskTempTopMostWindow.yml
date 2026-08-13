@@ -27,16 +27,11 @@ on:
             type: string
             default: 'Windows10'
 
-env:
-  project_path: WindowInjection/WindowInjection.vcxproj
-
 jobs:
   build-RustDeskTempTopMostWindow:
     runs-on: ${{ inputs.target }}
     strategy:
         fail-fast: false
-    env:
-      build_output_dir: RustDeskTempTopMostWindow/WindowInjection/${{ inputs.platform }}/${{ inputs.configuration }}
     steps:
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2
@@ -66,66 +61,39 @@ jobs:
       - name: Download the source code
         run: |
           git clone https://github.com/rustdesk-org/RustDeskTempTopMostWindow RustDeskTempTopMostWindow
+          cd RustDeskTempTopMostWindow && git checkout 53b548a5398624f7149a382000397993542ad796
 
-        # Build. commit 53b548a5398624f7149a382000397993542ad796 is tag v0.3
-      - name: Build the project
+      # Build. commit 53b548a5398624f7149a382000397993542ad796 is tag v0.3
+      - name: Build brand-specific privacy helpers
         uses: nick-fields/retry@v3
         with:
-          timeout_minutes: 5
+          timeout_minutes: 30
           max_attempts: 3
           retry_wait_seconds: 15
           shell: pwsh
           command: |
-            cd RustDeskTempTopMostWindow && git checkout 53b548a5398624f7149a382000397993542ad796
-            if ($env:privacylink_url-ne "false") {
-              if (-not (Test-Path -LiteralPath $env:RDGEN_PRIVACY_PATH -PathType Leaf)) {
-                throw 'Custom privacy image was not found in the encrypted build input'
-              }
-              Copy-Item -LiteralPath $env:RDGEN_PRIVACY_PATH -Destination privacy.png -Force
-              python -m pip install --disable-pip-version-check pillow
-              Invoke-WebRequest -Uri https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/privacyScreen.py -OutFile privacyScreen.py
-              python privacyScreen.py
-              rm ./WindowInjection/img.cpp
-              mv img.cpp ./WindowInjection/img.cpp
-            }
-            msbuild ${{ env.project_path }} -p:Configuration=${{ inputs.configuration }} -p:Platform=${{ inputs.platform }} /p:TargetVersion=${{ inputs.target_version }} -p:PlatformToolset=v143
+            & ./.github/scripts/build-windows-privacy-helpers.ps1 `
+              -SourceDirectory RustDeskTempTopMostWindow `
+              -Configuration '${{ inputs.configuration }}' `
+              -Platform '${{ inputs.platform }}' `
+              -TargetVersion '${{ inputs.target_version }}'
 
       - name: Archive build artifacts
         id: upload-artifacts
         uses: actions/upload-artifact@master
         continue-on-error: true
-        if: ${{ inputs.upload-artifact && inputs.platform != 'Win32' }}
+        if: ${{ inputs.upload-artifact }}
         with:
             name: topmostwindow-artifacts
             overwrite: true
             path: |
-              ./${{ env.build_output_dir }}/WindowInjection.dll
+              ./rdgen-topmost-output/
 
       - name: Retry archive build artifacts
         uses: actions/upload-artifact@master
-        if: ${{ inputs.upload-artifact && inputs.platform != 'Win32' && steps.upload-artifacts.outcome == 'failure' }}
+        if: ${{ inputs.upload-artifact && steps.upload-artifacts.outcome == 'failure' }}
         with:
             name: topmostwindow-artifacts
             overwrite: true
             path: |
-              ./${{ env.build_output_dir }}/WindowInjection.dll
-
-      - name: Archive Win32 build artifacts
-        id: upload-win32-artifacts
-        uses: actions/upload-artifact@master
-        continue-on-error: true
-        if: ${{ inputs.upload-artifact && inputs.platform == 'Win32' }}
-        with:
-            name: topmostwindow-artifacts
-            overwrite: true
-            path: |
-              ./RustDeskTempTopMostWindow/WindowInjection/${{ inputs.configuration }}/WindowInjection.dll
-
-      - name: Retry archive Win32 build artifacts
-        uses: actions/upload-artifact@master
-        if: ${{ inputs.upload-artifact && inputs.platform == 'Win32' && steps.upload-win32-artifacts.outcome == 'failure' }}
-        with:
-            name: topmostwindow-artifacts
-            overwrite: true
-            path: |
-              ./RustDeskTempTopMostWindow/WindowInjection/${{ inputs.configuration }}/WindowInjection.dll
+              ./rdgen-topmost-output/

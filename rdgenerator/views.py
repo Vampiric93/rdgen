@@ -1,7 +1,7 @@
 import io
 import copy
 from pathlib import Path
-from django.http import HttpResponse, JsonResponse, HttpResponseForbidden
+from django.http import FileResponse, HttpResponse, JsonResponse, HttpResponseForbidden
 from django.shortcuts import render, get_object_or_404
 from django.core.files.base import ContentFile
 import os
@@ -38,6 +38,11 @@ def _sanitize_brand_suffix(value):
     if not value:
         return ''
     return _sanitize_output_name(value)
+
+
+def _brand_filename(filename, suffix):
+    suffix = _sanitize_brand_suffix(suffix)
+    return f"{filename}_{suffix}" if suffix else filename
 
 
 def _validate_brand_image(upload, *, square=False):
@@ -85,11 +90,18 @@ def _collect_extra_brands(request):
 
         icon = request.FILES.get(f'extra_iconfile_{brand_id}') or request.POST.get(f'extra_iconbase64_{brand_id}')
         logo = request.FILES.get(f'extra_logofile_{brand_id}') or request.POST.get(f'extra_logobase64_{brand_id}')
-        if not icon and not logo:
-            raise ValueError(f'Add an icon or logo for additional client {position}.')
+        privacy = request.FILES.get(f'extra_privacyfile_{brand_id}') or request.POST.get(f'extra_privacybase64_{brand_id}')
+        if not icon and not logo and not privacy:
+            raise ValueError(f'Add an icon, logo or privacy screen for additional client {position}.')
         _validate_brand_image(icon, square=True)
         _validate_brand_image(logo)
-        brands.append({'suffix': suffix, 'iconfile': icon, 'logofile': logo})
+        _validate_brand_image(privacy)
+        brands.append({
+            'suffix': suffix,
+            'iconfile': icon,
+            'logofile': logo,
+            'privacyfile': privacy,
+        })
     return brands
 
 
@@ -141,6 +153,7 @@ def generate_custom_client(params, full_url):
     if not appname:
         appname = "rustdesk"
     filename = params.get('exename', 'rustdesk')
+    primary_suffix = params.get('primarySuffix', '')
     compname = params.get('compname', '')
     if not compname:
         compname = "Purslane Ltd"
@@ -176,6 +189,7 @@ def generate_custom_client(params, full_url):
         filename = _sanitize_output_name(filename)
     except ValueError:
         filename = "rustdesk"
+    primary_filename = _brand_filename(filename, primary_suffix)
     if not all(char.isascii() for char in appname):
         appname = "rustdesk"
     myuuid = str(uuid.uuid4())
@@ -212,21 +226,30 @@ def generate_custom_client(params, full_url):
         privacylink_file = "false"
 
     brand_manifest = [{
-        'filename': filename,
+        'filename': primary_filename,
         'icon': 'icon.png' if iconlink_url != 'false' else '',
         'logo': 'logo.png' if logolink_url != 'false' else '',
+        'privacy': 'privacy.png' if privacylink_url != 'false' else '',
     }]
     for index, brand in enumerate(params.get('extra_brands', []), start=1):
         icon_name = f'brand-{index}-icon.png' if brand.get('iconfile') else ''
         logo_name = f'brand-{index}-logo.png' if brand.get('logofile') else ''
+        privacy_name = (
+            f'brand-{index}-privacy.png'
+            if brand.get('privacyfile')
+            else ('privacy.png' if privacylink_url != 'false' else '')
+        )
         if icon_name:
             save_png(brand['iconfile'], myuuid, full_url, icon_name)
         if logo_name:
             save_png(brand['logofile'], myuuid, full_url, logo_name)
+        if privacy_name:
+            save_png(brand['privacyfile'], myuuid, full_url, privacy_name)
         brand_manifest.append({
-            'filename': f"{filename}_{_sanitize_brand_suffix(brand.get('suffix'))}",
+            'filename': _brand_filename(filename, brand.get('suffix')),
             'icon': icon_name,
             'logo': logo_name,
+            'privacy': privacy_name,
         })
 
     ###create the custom.txt json here and send in as inputs below
@@ -362,7 +385,7 @@ def generate_custom_client(params, full_url):
         "removeNewVersionNotif": 'true' if removeNewVersionNotif else 'false',
         "compname": compname,
         "androidappid":androidappid,
-        "filename":filename,
+        "filename":primary_filename,
         "brands_json": json.dumps(brand_manifest, ensure_ascii=True, separators=(',', ':'))
     }
 
@@ -379,7 +402,7 @@ def generate_custom_client(params, full_url):
         zf.write(temp_json_path, arcname="secrets.json")
         asset_names = {"icon.png", "logo.png", "privacy.png"}
         for brand in brand_manifest:
-            asset_names.update(name for name in (brand['icon'], brand['logo']) if name)
+            asset_names.update(name for name in (brand['icon'], brand['logo'], brand['privacy']) if name)
         for asset_name in sorted(asset_names):
             asset_path = Path("png") / myuuid / asset_name
             if asset_path.is_file():
@@ -424,7 +447,7 @@ def generate_custom_client(params, full_url):
             return {
                 "success": True,
                 "uuid": myuuid,
-                "filename": filename,
+                "filename": primary_filename,
                 "platform": platform,
                 "log_url": github_data.get('html_url')
             }
@@ -493,6 +516,12 @@ def generator_view(request):
             params = form.cleaned_data
             try:
                 params['extra_brands'] = _collect_extra_brands(request)
+                params['primarySuffix'] = _sanitize_brand_suffix(params.get('primarySuffix'))
+                if params['primarySuffix'] and any(
+                    brand['suffix'].casefold() == params['primarySuffix'].casefold()
+                    for brand in params['extra_brands']
+                ):
+                    raise ValueError(f"Duplicate client suffix: {params['primarySuffix']}")
                 _sanitize_output_name(params.get('exename'))
             except ValueError as error:
                 form.add_error(None, str(error))
@@ -577,6 +606,11 @@ def download(request):
         'Content-Disposition': f'attachment; filename="{filename}"'
     })
     return response
+
+
+def brand_logo(request):
+    logo_path = Path(_settings.BASE_DIR) / 'res' / 'mb_darker_no_glare.png'
+    return FileResponse(logo_path.open('rb'), content_type='image/png')
 
 def get_png(request):
     filename = request.GET['filename']

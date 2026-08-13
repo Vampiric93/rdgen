@@ -565,7 +565,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: topmostwindow-artifacts
-          path: ./Release
+          path: ./.rdgen-topmost
 
       - name: find Runner.res
         # Windows: find Runner.res (compiled from ./flutter/windows/runner/Runner.rc), copy to ./Runner.res

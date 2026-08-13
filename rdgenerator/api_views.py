@@ -2,7 +2,7 @@ import json
 from django.http import JsonResponse
 from django.conf import settings as _settings
 from .forms import get_rustdesk_version_choices
-from .views import generate_custom_client, _get_run_status
+from .views import generate_custom_client, _get_run_status, _sanitize_brand_suffix
 
 
 # Field validation constraints (mirrored from GenerateForm)
@@ -28,7 +28,7 @@ BOOL_FIELDS = [
 # Optional string fields (no validation needed, just accept as-is)
 OPTIONAL_STR_FIELDS = [
     'sh_secret_field', 'serverIP', 'key', 'apiServer', 'urlLink', 'downloadLink',
-    'appname', 'compname', 'androidappid', 'permanentPassword',
+    'appname', 'primarySuffix', 'compname', 'androidappid', 'permanentPassword',
     'defaultManual', 'overrideManual',
     'iconbase64', 'logobase64', 'privacybase64',
 ]
@@ -95,6 +95,10 @@ def validate_generate_params(data):
     # Optional string fields
     for field in OPTIONAL_STR_FIELDS:
         cleaned[field] = data.get(field, '')
+    try:
+        cleaned['primarySuffix'] = _sanitize_brand_suffix(cleaned['primarySuffix'])
+    except ValueError as error:
+        errors['primarySuffix'] = str(error)
 
     # File fields are not used in API mode (base64 fields are used instead)
     cleaned['iconfile'] = None

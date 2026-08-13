@@ -12,6 +12,7 @@ $signingRoot = Join-Path $repositoryRoot '.rdgen-signing-input'
 $manifestPath = Join-Path $env:RUNNER_TEMP 'rdgen-windows-brands.json'
 $signingMapPath = Join-Path $env:RUNNER_TEMP 'rdgen-windows-signing-map.json'
 $assetsDirectory = $env:RDGEN_ASSETS_DIR
+$privacyHelperRoot = Join-Path $repositoryRoot '.rdgen-topmost'
 $appName = if ([string]::IsNullOrWhiteSpace($env:appname)) { 'rustdesk' } else { $env:appname }
 
 if (-not (Test-Path -LiteralPath $sourceRuntime -PathType Container)) {
@@ -23,7 +24,7 @@ if (-not [string]::IsNullOrWhiteSpace($env:brands_json)) {
     $brands = @($env:brands_json | ConvertFrom-Json)
 }
 if ($brands.Count -eq 0) {
-    $brands = @([pscustomobject]@{ filename = $env:filename; icon = ''; logo = '' })
+    $brands = @([pscustomobject]@{ filename = $env:filename; icon = ''; logo = ''; privacy = '' })
 }
 
 if (Test-Path -LiteralPath $brandRoot) {
@@ -56,6 +57,12 @@ for ($index = 0; $index -lt $brands.Count; $index++) {
     $brand = $brands[$index]
     $destination = Join-Path $brandRoot $index
     Copy-Item -LiteralPath $sourceRuntime -Destination $destination -Recurse -Force
+
+    $privacyHelper = Join-Path (Join-Path $privacyHelperRoot $index) 'WindowInjection.dll'
+    if (-not (Test-Path -LiteralPath $privacyHelper -PathType Leaf)) {
+        throw "Privacy helper for brand $index was not found: $privacyHelper"
+    }
+    Copy-Item -LiteralPath $privacyHelper -Destination (Join-Path $destination 'WindowInjection.dll') -Force
 
     if ($brand.logo) {
         $logoSource = Join-Path $assetsDirectory ([string]$brand.logo)

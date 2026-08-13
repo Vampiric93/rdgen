@@ -69,6 +69,7 @@ class GenerateForm(forms.Form):
 
     #General
     exename = forms.CharField(label="Name for EXE file", required=True)
+    primarySuffix = forms.CharField(label="File suffix for primary client", required=False)
     appname = forms.CharField(label="Custom App Name", required=False)
     direction = forms.MultipleChoiceField(widget=forms.CheckboxSelectMultiple, choices=[
         ('incoming', 'Incoming Quick Client'),
