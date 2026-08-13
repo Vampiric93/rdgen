@@ -1,6 +1,7 @@
 from io import BytesIO
 import base64
 import importlib.util
+import json
 from pathlib import Path
 import tempfile
 from unittest.mock import Mock, patch
@@ -21,6 +22,14 @@ def load_apply_custom_server():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module.apply_custom_server
+
+
+def load_prepare_macos_brands():
+    script_path = Path(__file__).resolve().parents[1] / '.github' / 'scripts' / 'prepare-macos-brands.py'
+    spec = importlib.util.spec_from_file_location('prepare_macos_brands', script_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def png_file(name, size=(64, 64)):
@@ -122,6 +131,26 @@ class CustomServerTests(SimpleTestCase):
 
             self.assertEqual(config.read_text(encoding='utf-8'), 'host.example\ncustom-key')
             self.assertEqual(common.read_text(encoding='utf-8'), 'https://api.example')
+
+
+class MacOSCustomConfigTests(SimpleTestCase):
+    def test_custom_config_is_installed_in_app_resources(self):
+        module = load_prepare_macos_brands()
+        config = base64.b64encode(json.dumps({
+            'password': 'test-only-password',
+            'default-settings': {'verification-method': 'use-permanent-password'},
+        }).encode('ascii')).decode('ascii')
+        with tempfile.TemporaryDirectory() as directory:
+            bundle = Path(directory) / 'Test.app'
+            module.install_custom_config(bundle, config)
+            installed = bundle / 'Contents' / 'Resources' / 'custom_.txt'
+            self.assertEqual(installed.read_text(encoding='ascii'), config)
+
+    def test_invalid_custom_config_is_rejected(self):
+        module = load_prepare_macos_brands()
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(RuntimeError, 'Invalid macOS'):
+                module.install_custom_config(Path(directory) / 'Test.app', 'not-base64')
 
 
 class WindowsArtifactNamingTests(SimpleTestCase):

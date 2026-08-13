@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import base64
 import json
 import os
 from pathlib import Path
@@ -42,6 +43,25 @@ def replace_icon(bundle: Path, source: Path, work: Path) -> None:
     shutil.copy2(icns, destination)
 
 
+def install_custom_config(bundle: Path, encoded_config: str) -> None:
+    if not encoded_config:
+        return
+    try:
+        decoded = base64.b64decode(encoded_config, validate=True)
+        parsed = json.loads(decoded)
+    except (ValueError, json.JSONDecodeError) as error:
+        raise RuntimeError("Invalid macOS custom client configuration") from error
+    if not isinstance(parsed, dict):
+        raise RuntimeError("macOS custom client configuration must be a JSON object")
+
+    # allowCustom.py changes RustDesk's loader to read custom_.txt and accept
+    # RDGen's unsigned base64 JSON. The file must be inside the app bundle on
+    # macOS; unlike Windows, there is no adjacent runtime directory to copy it from.
+    resources = bundle / "Contents/Resources"
+    resources.mkdir(parents=True, exist_ok=True)
+    (resources / "custom_.txt").write_text(encoded_config, encoding="ascii")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--bundle", required=True, type=Path)
@@ -55,6 +75,7 @@ def main():
     if not brands:
         brands = [{"filename": os.environ.get("filename", "rustdesk"), "icon": "", "logo": ""}]
     assets_dir = Path(os.environ["RDGEN_ASSETS_DIR"])
+    custom_config = os.environ.get("custom", "").strip()
     root = Path(os.environ["RUNNER_TEMP"]) / "rdgen-macos-brands"
     shutil.rmtree(root, ignore_errors=True)
     root.mkdir(parents=True)
@@ -64,6 +85,7 @@ def main():
         brand_dir = root / str(index)
         bundle = brand_dir / f"{args.app_name}.app"
         shutil.copytree(args.bundle, bundle, symlinks=True)
+        install_custom_config(bundle, custom_config)
         if index and brand.get("logo"):
             logo = assets_dir / brand["logo"]
             destination = bundle / "Contents/Frameworks/App.framework/Versions/Current/Resources/flutter_assets/assets/logo.png"

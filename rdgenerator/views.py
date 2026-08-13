@@ -243,7 +243,7 @@ def generate_custom_client(params, full_url):
             save_png(brand['iconfile'], myuuid, full_url, icon_name)
         if logo_name:
             save_png(brand['logofile'], myuuid, full_url, logo_name)
-        if privacy_name:
+        if brand.get('privacyfile'):
             save_png(brand['privacyfile'], myuuid, full_url, privacy_name)
         brand_manifest.append({
             'filename': _brand_filename(filename, brand.get('suffix')),
