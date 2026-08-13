@@ -242,7 +242,7 @@ foreach ($direction in $directions) {
 
     Push-Location $msiDirectory
     try {
-        msbuild msi.sln /t:Rebuild /p:Configuration=Release /p:Platform=x86 /p:TargetVersion=Windows10 /p:SuppressValidation=true
+        msbuild msi.sln /m /t:Rebuild /p:Configuration=Release /p:Platform=x86 /p:TargetVersion=Windows10 /p:SuppressValidation=true
         if ($LASTEXITCODE -ne 0) { throw "MSI build failed for $direction" }
 
         $msiOutput = Get-ChildItem -LiteralPath (Join-Path $msiDirectory 'Package\bin') -Filter Package.msi -Recurse -File |

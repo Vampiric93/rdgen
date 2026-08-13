@@ -175,7 +175,7 @@ foreach ($direction in $directions) {
 
     Push-Location $msiDirectory
     try {
-        msbuild msi.sln /t:Rebuild /p:Configuration=Release /p:Platform=x64 /p:TargetVersion=Windows10 /p:SuppressValidation=true
+        msbuild msi.sln /m /t:Rebuild /p:Configuration=Release /p:Platform=x64 /p:TargetVersion=Windows10 /p:SuppressValidation=true
         if ($LASTEXITCODE -ne 0) { throw "MSI build failed for $direction" }
 
         $msiOutput = Join-Path $msiDirectory 'Package\bin\x64\Release\en-us\Package.msi'
