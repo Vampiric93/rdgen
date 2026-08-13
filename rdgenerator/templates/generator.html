@@ -291,6 +291,7 @@
                 {% endif %}
                 <div class="help-text">{{ form.version.help_text }}</div>
                 <label for="{{ form.delayFix.id_for_label }}">{{ form.delayFix }} Fix connection delay when using third-party API</label>
+                <label for="{{ form.telegramNotifications.id_for_label }}">{{ form.telegramNotifications }} Notify me in Telegram when Windows signing is required</label>
             </div>
         </div>
         <div class="container">   
@@ -769,6 +770,8 @@
                             if (Array.isArray(formData.extra_brands)) {
                                 formData.extra_brands.forEach(addBrand);
                             }
+                            // Old configuration files do not contain this option; keep it off.
+                            document.getElementById('id_telegramNotifications').checked = false;
                             for (const key in formData) {
                                 if (key === 'extra_brands') {
                                     continue;

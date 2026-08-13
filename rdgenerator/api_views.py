@@ -18,7 +18,7 @@ PERMISSIONS_TYPE_CHOICES = ['custom', 'full', 'view']
 
 # Boolean fields
 BOOL_FIELDS = [
-    'delayFix', 'xOffline', 'hidecm', 'removeNewVersionNotif',
+    'delayFix', 'telegramNotifications', 'xOffline', 'hidecm', 'removeNewVersionNotif',
     'denyLan', 'enableDirectIP', 'autoClose',
     'enableKeyboard', 'enableClipboard', 'enableFileTransfer', 'enableAudio',
     'enableTCP', 'enableRemoteRestart', 'enableRecording', 'enableBlockingInput',

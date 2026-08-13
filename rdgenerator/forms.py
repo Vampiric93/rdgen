@@ -65,6 +65,7 @@ class GenerateForm(forms.Form):
     version = forms.ChoiceField(choices=[('master', 'nightly')], initial='1.4.9')
     help_text="'master' is the development version (nightly build) with the latest features but may be less stable"
     delayFix = forms.BooleanField(initial=True, required=False)
+    telegramNotifications = forms.BooleanField(initial=False, required=False)
 
     #General
     exename = forms.CharField(label="Name for EXE file", required=True)

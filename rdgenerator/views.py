@@ -110,6 +110,7 @@ def generate_custom_client(params, full_url):
     platform = params.get('platform', 'windows')
     version = params.get('version', '1.4.9')
     delayFix = params.get('delayFix', True)
+    telegramNotifications = params.get('telegramNotifications', False)
     xOffline = params.get('xOffline', False)
     hidecm = params.get('hidecm', False)
     removeNewVersionNotif = params.get('removeNewVersionNotif', False)
@@ -355,6 +356,7 @@ def generate_custom_client(params, full_url):
         "urlLink":urlLink,
         "downloadLink":downloadLink,
         "delayFix": 'true' if delayFix else 'false',
+        "telegramNotifications": 'true' if telegramNotifications else 'false',
         "rdgen":'true',
         "xOffline": 'true' if xOffline else 'false',
         "removeNewVersionNotif": 'true' if removeNewVersionNotif else 'false',

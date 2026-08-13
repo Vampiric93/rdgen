@@ -120,3 +120,5 @@ class GeneratorPageTests(SimpleTestCase):
         self.assertContains(response, 'id="id_platform" multiple')
         self.assertContains(response, 'function getSelectedPlatforms()')
         self.assertContains(response, "requestData.delete('platform')")
+        self.assertContains(response, 'id="id_telegramNotifications"')
+        self.assertFalse(response.context['form'].fields['telegramNotifications'].initial)
