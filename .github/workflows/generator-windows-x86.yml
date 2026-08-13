@@ -205,8 +205,11 @@ jobs:
             }
           }
           $toolDir | Out-File $env:GITHUB_PATH -Encoding utf8 -Append
-          & $nugetPath help | Select-Object -First 1
-          if ($LASTEXITCODE -ne 0) { throw "NuGet validation failed with exit code $LASTEXITCODE" }
+          $nugetCheck = Start-Process -FilePath $nugetPath -ArgumentList 'help' `
+            -NoNewWindow -Wait -PassThru
+          if ($nugetCheck.ExitCode -ne 0) {
+            throw "NuGet validation failed with exit code $($nugetCheck.ExitCode)"
+          }
 
       - name: change appname to custom
         if: env.appname != 'rustdesk'
