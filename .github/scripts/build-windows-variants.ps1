@@ -131,7 +131,12 @@ try {
     Clear-GeneratedMsiSection 'Package\Fragments\Upgrades.wxs' '<!--$UpgradeStart$-->' '<!--$UpgradeEnd$-->'
     Clear-GeneratedMsiSection 'Package\Package.wxs' '<!--$CustomBitmapsStart$-->' '<!--$CustomBitmapsEnd$-->'
     Clear-GeneratedMsiSection 'Package\Fragments\AddRemoveProperties.wxs' '<!--$ArpStart$-->' '<!--$ArpEnd$-->'
-    Clear-GeneratedMsiSection 'Package\Components\Regs.wxs' '<!--$ArpStart$-->' '<!--$ArpEnd$-->'
+    $regsPath = Join-Path $msiDirectory 'Package\Components\Regs.wxs'
+    if ([IO.File]::ReadAllText($regsPath).Contains('<!--$InstallStateStart$-->')) {
+        Clear-GeneratedMsiSection 'Package\Components\Regs.wxs' '<!--$InstallStateStart$-->' '<!--$InstallStateEnd$-->'
+    } else {
+        Clear-GeneratedMsiSection 'Package\Components\Regs.wxs' '<!--$ArpStart$-->' '<!--$ArpEnd$-->'
+    }
     Clear-GeneratedMsiSection 'Package\Fragments\AddRemoveProperties.wxs' '<!--$CustomClientPropsStart$-->' '<!--$CustomClientPropsEnd$-->'
 
     $msiManufacturer = $env:compname
